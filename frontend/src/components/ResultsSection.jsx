@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ChunkModal from './ChunkModal'
+import CopyButton from './CopyButton'
 
 function scoreColor(score) {
   if (score >= 0.7) return 'bg-green-500'
@@ -13,40 +14,83 @@ function scoreLabel(score) {
   return 'text-red-700 bg-red-50'
 }
 
-function CopyButton({ text, label }) {
-  const [copied, setCopied] = useState(false)
+function FormattedAnswer({ text }) {
+  if (!text) return null
+  const lines = text.split('\n')
+  let inList = false
+  const elements = []
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  lines.forEach((line, i) => {
+    const bulletMatch = line.match(/^[\s]*[*\-]\s+(.*)/)
+    if (bulletMatch) {
+      if (!inList) { inList = true }
+      elements.push({ type: 'li', content: bulletMatch[1], key: i })
+    } else {
+      if (inList) { inList = false }
+      if (line.trim()) {
+        elements.push({ type: 'p', content: line, key: i })
+      } else {
+        elements.push({ type: 'br', key: i })
+      }
+    }
+  })
+
+  const formatInline = (str) => {
+    const parts = []
+    const regex = /\*\*(.+?)\*\*/g
+    let last = 0
+    let match
+    while ((match = regex.exec(str)) !== null) {
+      if (match.index > last) parts.push(str.slice(last, match.index))
+      parts.push(<strong key={match.index} className="font-semibold">{match[1]}</strong>)
+      last = regex.lastIndex
+    }
+    if (last < str.length) parts.push(str.slice(last))
+    return parts.length ? parts : str
   }
 
+  const rendered = []
+  let listItems = []
+
+  elements.forEach((el) => {
+    if (el.type === 'li') {
+      listItems.push(<li key={el.key} className="ml-1">{formatInline(el.content)}</li>)
+    } else {
+      if (listItems.length) {
+        rendered.push(<ul key={`ul-${el.key}`} className="list-disc pl-5 my-2 space-y-1">{listItems}</ul>)
+        listItems = []
+      }
+      if (el.type === 'p') {
+        rendered.push(<p key={el.key} className="mb-2 last:mb-0">{formatInline(el.content)}</p>)
+      }
+    }
+  })
+  if (listItems.length) {
+    rendered.push(<ul key="ul-end" className="list-disc pl-5 my-2 space-y-1">{listItems}</ul>)
+  }
+
+  return <div>{rendered}</div>
+}
+
+function HighlightedText({ text, query }) {
+  if (!query?.trim()) return <span>{text}</span>
+  const words = query.trim().split(/\s+/).filter(w => w.length > 2)
+  if (!words.length) return <span>{text}</span>
+  const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const pattern = new RegExp(`(${escaped.join('|')})`, 'gi')
+  const parts = text.split(pattern)
   return (
-    <button
-      onClick={handleCopy}
-      className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-    >
-      {copied ? (
-        <>
-          <svg className="h-3.5 w-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Copied
-        </>
-      ) : (
-        <>
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          {label}
-        </>
+    <span>
+      {parts.map((part, i) =>
+        pattern.test(part)
+          ? <mark key={i} className="bg-yellow-200 rounded px-0.5">{part}</mark>
+          : <span key={i}>{part}</span>
       )}
-    </button>
+    </span>
   )
 }
 
-function ResultsSection({ result }) {
+function ResultsSection({ result, query }) {
   const [selectedChunk, setSelectedChunk] = useState(null)
 
   const sources = result.sources || []
@@ -73,8 +117,8 @@ function ResultsSection({ result }) {
           </div>
         </div>
 
-        <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{result.answer}</p>
+        <div className="bg-gray-50 rounded-lg p-4 text-gray-800 leading-relaxed">
+          <FormattedAnswer text={result.answer} />
         </div>
 
         {result.timings && (
@@ -128,13 +172,16 @@ function ResultsSection({ result }) {
                       <span className="text-xs text-gray-400">{source.doc_id}</span>
                     )}
                   </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded ${scoreLabel(source.score)}`}>
-                    {(source.score * 100).toFixed(0)}%
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <CopyButton text={`Page ${source.page_num}: ${source.text}`} label="Copy" />
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${scoreLabel(source.score)}`}>
+                      {(source.score * 100).toFixed(0)}%
+                    </span>
+                  </div>
                 </div>
 
                 <p className="text-sm text-gray-600 line-clamp-3">
-                  {source.text}
+                  <HighlightedText text={source.text} query={query} />
                 </p>
 
                 {/* Relevance bar */}
@@ -151,7 +198,7 @@ function ResultsSection({ result }) {
       )}
 
       {selectedChunk && (
-        <ChunkModal chunk={selectedChunk} onClose={() => setSelectedChunk(null)} />
+        <ChunkModal chunk={selectedChunk} query={query} onClose={() => setSelectedChunk(null)} />
       )}
     </section>
   )

@@ -292,5 +292,45 @@ def debug_info():
     }
 
 
+@app.post("/api/debug/retrieve")
+def debug_retrieve(req: QueryRequest):
+    """Run all three retrieval methods side-by-side for diagnostic comparison."""
+    from retriever import retrieve_hybrid, retrieve_dense_only, retrieve_bm25_only
+
+    results = {}
+    for method, fn in [("dense", retrieve_dense_only), ("bm25", retrieve_bm25_only), ("hybrid", retrieve_hybrid)]:
+        start = time.time()
+        chunks = fn(req.query, k=req.k, doc_id=req.doc_id)
+        elapsed = int((time.time() - start) * 1000)
+        results[method] = {"chunks": chunks, "time_ms": elapsed}
+
+    return {"query": req.query, **results}
+
+
+@app.get("/api/documents/{doc_id}/chunks")
+def get_document_chunks(doc_id: str):
+    """List all chunks for a specific document."""
+    from vector_store import get_collection
+
+    collection = get_collection()
+    data = collection.get(where={"doc_id": doc_id}, include=["documents", "metadatas"])
+
+    if not data["ids"]:
+        raise HTTPException(status_code=404, detail=f"No document found with id: {doc_id}")
+
+    chunks = []
+    for i in range(len(data["ids"])):
+        chunks.append({
+            "chunk_id": data["ids"][i],
+            "text": data["documents"][i],
+            "page_num": data["metadatas"][i]["page_num"],
+            "token_count": data["metadatas"][i]["token_count"],
+            "page_type": data["metadatas"][i].get("page_type", "text"),
+        })
+
+    chunks.sort(key=lambda c: (c["page_num"], c["chunk_id"]))
+    return {"doc_id": doc_id, "total_chunks": len(chunks), "chunks": chunks}
+
+
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,4 +1,24 @@
-function ChunkModal({ chunk, onClose }) {
+import CopyButton from './CopyButton'
+
+function HighlightedText({ text, query }) {
+  if (!query?.trim()) return <span>{text}</span>
+  const words = query.trim().split(/\s+/).filter(w => w.length > 2)
+  if (!words.length) return <span>{text}</span>
+  const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const pattern = new RegExp(`(${escaped.join('|')})`, 'gi')
+  const parts = text.split(pattern)
+  return (
+    <span>
+      {parts.map((part, i) =>
+        pattern.test(part)
+          ? <mark key={i} className="bg-yellow-200 rounded px-0.5">{part}</mark>
+          : <span key={i}>{part}</span>
+      )}
+    </span>
+  )
+}
+
+function ChunkModal({ chunk, query, onClose }) {
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
@@ -31,12 +51,17 @@ function ChunkModal({ chunk, onClose }) {
         </div>
 
         <div className="bg-gray-50 rounded-lg p-4">
-          <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{chunk.text}</p>
+          <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+            <HighlightedText text={chunk.text} query={query} />
+          </p>
         </div>
 
-        {chunk.token_count > 0 && (
-          <p className="text-xs text-gray-400 mt-3">{chunk.token_count} tokens</p>
-        )}
+        <div className="flex items-center justify-between mt-3">
+          {chunk.token_count > 0 && (
+            <p className="text-xs text-gray-400">{chunk.token_count} tokens</p>
+          )}
+          <CopyButton text={chunk.text} label="Copy chunk" />
+        </div>
       </div>
     </div>
   )

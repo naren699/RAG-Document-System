@@ -21,15 +21,18 @@ def get_model() -> SentenceTransformer:
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Encode a list of texts into embedding vectors."""
     model = get_model()
     embeddings = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
     return embeddings.tolist()
 
 
 def embed_query(query: str) -> list[float]:
+    """Encode a single query string into an embedding vector."""
     return embed_texts([query])[0]
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors. Returns value in [-1, 1]."""
     a, b = np.array(a), np.array(b)
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))

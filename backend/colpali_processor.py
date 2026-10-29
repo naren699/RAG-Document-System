@@ -15,7 +15,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 PAGE_IMAGES_DIR = Path("page_images")
 
 
-def get_model():
+def get_model() -> tuple:
+    """Load and return (ColPali model, ColPaliProcessor), caching after first call."""
     global _model, _processor
     if _model is None:
         from colpali_engine import ColPali, ColPaliProcessor
@@ -80,7 +81,7 @@ def process_visual_pages(
     pdf_path: str,
     visual_pages: list[dict],
     doc_id: str,
-) -> list[dict]:
+) -> tuple[list[dict], list[list[float]]]:
     """Process visual pages through ColPali and return chunks with embeddings.
 
     Each visual page becomes one 'chunk' with its ColPali embedding.

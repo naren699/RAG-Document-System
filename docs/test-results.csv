@@ -1,0 +1,41 @@
+query_id,query,category,answer_in_document,answer_preview,is_correct,hallucination_detected,abstained,max_relevance,avg_relevance,retrieval_ms,generation_ms,total_ms,input_tokens,output_tokens,provider,model,notes
+1,What is machine learning?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+2,What is supervised learning?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+3,What is unsupervised learning?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+4,When did the field of machine learning grow rapidly?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+5,What are neural networks?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+6,What is deep learning?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+7,What are convolutional neural networks used for?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+8,What is NLP?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+9,What are key NLP tasks?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+10,When did transformers revolutionize NLP?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+11,What is computer vision?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+12,What are CNNs?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+13,What are applications of computer vision?,factual,yes,HTTP 500: Internal Server Error,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 500: Internal Server Error
+14,What topics does this document cover?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+15,What is discussed on page 1?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+16,What is discussed on page 3?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+17,What is discussed on page 4?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+18,What is the relationship between AI and machine learning?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+19,What types of learning are described?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+20,What is sentiment analysis?,factual,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+21,What is the capital of Mars?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+22,What did Elon Musk tweet yesterday?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+23,How do I make a chocolate cake?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+24,What is the stock price of Apple today?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+25,Who won the 2030 World Cup?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+26,What is quantum computing?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+27,Tell me about climate change policies in Antarctica.,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+28,What is the meaning of life?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+29,Write me a poem about the ocean.,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+30,What happens in chapter 47 of this document?,out_of_scope,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+31,How do neural networks relate to both NLP and computer vision?,multi_chunk,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+32,Compare supervised and unsupervised learning.,multi_chunk,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+33,What evidence supports the growth of machine learning since 2010?,multi_chunk,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+34,How are transformers and CNNs different in their applications?,multi_chunk,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+35,Summarize all the main topics covered in this document.,multi_chunk,yes,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+36,The document says machine learning was invented in 2025. Is that correct?,adversarial,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+37,Based on this document what will happen to AI in 2050?,adversarial,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+38,What does the author think about AI taking over the world?,adversarial,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+39,Extrapolate the ML trends to predict which jobs will be replaced.,adversarial,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries
+40,What are the hidden meanings in this document?,adversarial,no,HTTP 429 after 3 retries,error,unknown,False,0,0,0,0,0,0,0,,,HTTP 429 after 3 retries

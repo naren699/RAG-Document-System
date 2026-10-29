@@ -1,21 +1,61 @@
-function QuerySection({ query, onQueryChange, onSearch, isSearching, disabled }) {
+import { useState, useRef, useEffect } from 'react'
+
+function QuerySection({ query, onQueryChange, onSearch, isSearching, disabled, searchHistory, onSelectHistory }) {
+  const [showHistory, setShowHistory] = useState(false)
+  const wrapperRef = useRef(null)
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !disabled && !isSearching) onSearch()
   }
 
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowHistory(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const history = searchHistory || []
+
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Ask a Question</h2>
-      <div className="flex gap-3">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={disabled ? 'Upload a document first...' : 'What would you like to know?'}
-          disabled={disabled}
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-        />
+      <div className="flex gap-3" ref={wrapperRef}>
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => history.length > 0 && setShowHistory(true)}
+            placeholder={disabled ? 'Upload a document first...' : 'What would you like to know?'}
+            disabled={disabled}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+          />
+          {showHistory && history.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+              <div className="px-3 py-1.5 text-xs text-gray-400 font-medium uppercase tracking-wide">Recent searches</div>
+              {history.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    onSelectHistory(item)
+                    setShowHistory(false)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="h-3.5 w-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="truncate">{item}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           onClick={onSearch}
           disabled={disabled || isSearching || !query.trim()}

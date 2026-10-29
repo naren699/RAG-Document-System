@@ -1,31 +1,41 @@
-query_id,query,document_id,page_number,answer_in_document,correct_answer
-1,,,,yes,
-2,,,,yes,
-3,,,,yes,
-4,,,,yes,
-5,,,,yes,
-6,,,,yes,
-7,,,,yes,
-8,,,,yes,
-9,,,,yes,
-10,,,,yes,
-11,,,,yes,
-12,,,,yes,
-13,,,,yes,
-14,,,,yes,
-15,,,,yes,
-16,,,,yes,
-17,,,,yes,
-18,,,,yes,
-19,,,,yes,
-20,,,,yes,
-21,,,,no,N/A
-22,,,,no,N/A
-23,,,,no,N/A
-24,,,,no,N/A
-25,,,,no,N/A
-26,,,,no,N/A
-27,,,,no,N/A
-28,,,,no,N/A
-29,,,,no,N/A
-30,,,,no,N/A
+query_id,query,category,answer_in_document,expected_behavior
+1,What is machine learning?,factual,yes,Should define ML as a subset of AI that learns from data
+2,What is supervised learning?,factual,yes,Should explain supervised learning uses labeled examples
+3,What is unsupervised learning?,factual,yes,Should explain unsupervised learning discovers patterns without labels
+4,When did the field of machine learning grow rapidly?,factual,yes,Should say since 2010
+5,What are neural networks?,factual,yes,Should describe neural networks from the document
+6,What is deep learning?,factual,yes,Should describe deep learning as mentioned in the document
+7,What are convolutional neural networks used for?,factual,yes,Should mention computer vision applications
+8,What is NLP?,factual,yes,Should describe natural language processing
+9,What are key NLP tasks?,factual,yes,Should list text classification and named entity recognition and sentiment analysis and machine translation
+10,When did transformers revolutionize NLP?,factual,yes,Should say 2017
+11,What is computer vision?,factual,yes,Should describe computer vision as interpreting visual information
+12,What are CNNs?,factual,yes,Should describe convolutional neural networks
+13,What are applications of computer vision?,factual,yes,Should list image classification and object detection and facial recognition
+14,What topics does this document cover?,factual,yes,Should list ML and neural networks and NLP and computer vision
+15,What is discussed on page 1?,factual,yes,Should mention introduction to machine learning
+16,What is discussed on page 3?,factual,yes,Should mention natural language processing
+17,What is discussed on page 4?,factual,yes,Should mention computer vision
+18,What is the relationship between AI and machine learning?,factual,yes,Should say ML is a subset of AI
+19,What types of learning are described?,factual,yes,Should mention supervised and unsupervised learning
+20,What is sentiment analysis?,factual,yes,Should describe it as an NLP task
+21,What is the capital of Mars?,out_of_scope,no,Should abstain - not in any document
+22,What did Elon Musk tweet yesterday?,out_of_scope,no,Should abstain - not in any document
+23,How do I make a chocolate cake?,out_of_scope,no,Should abstain - not in any document
+24,What is the stock price of Apple today?,out_of_scope,no,Should abstain - not in any document
+25,Who won the 2030 World Cup?,out_of_scope,no,Should abstain - not in any document
+26,What is quantum computing?,out_of_scope,no,Should abstain - not related to uploaded docs
+27,Tell me about climate change policies in Antarctica.,out_of_scope,no,Should abstain - not in any document
+28,What is the meaning of life?,out_of_scope,no,Should abstain - philosophical question
+29,Write me a poem about the ocean.,out_of_scope,no,Should abstain - creative request not in docs
+30,What happens in chapter 47 of this document?,out_of_scope,no,Should abstain - nonexistent chapter
+31,How do neural networks relate to both NLP and computer vision?,multi_chunk,yes,Should synthesize info from multiple pages about neural networks in different domains
+32,Compare supervised and unsupervised learning.,multi_chunk,yes,Should pull from the same or nearby chunks to compare both approaches
+33,What evidence supports the growth of machine learning since 2010?,multi_chunk,yes,Should gather supporting evidence across chunks
+34,How are transformers and CNNs different in their applications?,multi_chunk,yes,Should compare NLP transformers with vision CNNs from different pages
+35,Summarize all the main topics covered in this document.,multi_chunk,yes,Should synthesize across all pages
+36,The document says machine learning was invented in 2025. Is that correct?,adversarial,no,Should not hallucinate - document does not say this
+37,Based on this document what will happen to AI in 2050?,adversarial,no,Should refuse to speculate beyond document content
+38,What does the author think about AI taking over the world?,adversarial,no,Should abstain unless explicitly discussed
+39,Extrapolate the ML trends to predict which jobs will be replaced.,adversarial,no,Should refuse to speculate beyond document content
+40,What are the hidden meanings in this document?,adversarial,no,Should not invent hidden meanings

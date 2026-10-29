@@ -8,9 +8,12 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-preview")
 
 _gemini_client = None
 _claude_client = None
+_openrouter_client = None
 
 SYSTEM_PROMPT = """You are a document Q&A assistant for the FARE system.
 
@@ -59,8 +62,10 @@ def query_llm(context: str, query: str) -> dict:
         return query_with_gemini(context, query)
     elif provider == "claude":
         return query_with_claude(context, query)
+    elif provider == "openrouter":
+        return query_with_openrouter(context, query)
     else:
-        raise ValueError(f"Unknown LLM provider: {provider}. Set LLM_PROVIDER to 'gemini' or 'claude'.")
+        raise ValueError(f"Unknown LLM provider: {provider}. Set LLM_PROVIDER to 'gemini', 'claude', or 'openrouter'.")
 
 
 def query_with_gemini(context: str, query: str) -> dict:
@@ -73,7 +78,10 @@ def query_with_gemini(context: str, query: str) -> dict:
         raise ValueError("GEMINI_API_KEY not set in environment")
 
     if _gemini_client is None:
-        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        _gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options={"timeout": 30_000},
+        )
         logger.info(f"Gemini client initialized: {GEMINI_MODEL}")
 
     user_message = format_user_message(context, query)
@@ -101,6 +109,8 @@ def query_with_gemini(context: str, query: str) -> dict:
         logger.info(
             f"Gemini response: {input_tokens} in, {output_tokens} out, {elapsed_ms}ms"
         )
+        if elapsed_ms > 10_000:
+            logger.warning(f"SLOW API CALL: {elapsed_ms}ms for {GEMINI_MODEL}")
 
         return {
             "answer": answer,
@@ -117,8 +127,10 @@ def query_with_gemini(context: str, query: str) -> dict:
         error_msg = str(e)
         if "API_KEY" in error_msg.upper() or "authentication" in error_msg.lower():
             raise ValueError("Invalid Gemini API key. Check GEMINI_API_KEY in .env")
-        if "quota" in error_msg.lower() or "rate" in error_msg.lower():
-            raise RuntimeError("Gemini API rate limited. Try again later.")
+        if any(kw in error_msg.lower() for kw in ("quota", "rate", "unavailable", "high demand", "deadline", "503", "504", "429")):
+            raise RuntimeError("Gemini API rate limited or unavailable. Try again later.")
+        if "closed" in error_msg.lower():
+            raise RuntimeError("Gemini API connection error. Please retry.")
         raise
 
 
@@ -133,7 +145,7 @@ def query_with_claude(context: str, query: str) -> dict:
         raise ValueError("ANTHROPIC_API_KEY not set in environment")
 
     if _claude_client is None:
-        _claude_client = anthropic.Anthropic(api_key=api_key)
+        _claude_client = anthropic.Anthropic(api_key=api_key, timeout=30.0)
         logger.info(f"Claude client initialized: {CLAUDE_MODEL}")
 
     user_message = format_user_message(context, query)
@@ -155,6 +167,8 @@ def query_with_claude(context: str, query: str) -> dict:
         logger.info(
             f"Claude response: {input_tokens} in, {output_tokens} out, {elapsed_ms}ms"
         )
+        if elapsed_ms > 10_000:
+            logger.warning(f"SLOW API CALL: {elapsed_ms}ms for {CLAUDE_MODEL}")
 
         return {
             "answer": answer,
@@ -168,6 +182,59 @@ def query_with_claude(context: str, query: str) -> dict:
     except Exception as e:
         elapsed_ms = int((time.time() - start) * 1000)
         logger.error(f"Claude API error after {elapsed_ms}ms: {e}", exc_info=True)
+        raise
+
+
+def query_with_openrouter(context: str, query: str) -> dict:
+    """Call OpenRouter API (OpenAI-compatible) and return answer with token counts."""
+    global _openrouter_client
+
+    from openai import OpenAI
+
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY not set in environment")
+
+    if _openrouter_client is None:
+        _openrouter_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=OPENROUTER_API_KEY,
+        )
+        logger.info(f"OpenRouter client initialized: {OPENROUTER_MODEL}")
+
+    user_message = format_user_message(context, query)
+
+    start = time.time()
+    try:
+        response = _openrouter_client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            max_tokens=1024,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        elapsed_ms = int((time.time() - start) * 1000)
+
+        answer = response.choices[0].message.content
+        input_tokens = getattr(response.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(response.usage, "completion_tokens", 0) or 0
+
+        logger.info(
+            f"OpenRouter response: {input_tokens} in, {output_tokens} out, {elapsed_ms}ms"
+        )
+
+        return {
+            "answer": answer,
+            "provider": "openrouter",
+            "model": OPENROUTER_MODEL,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "generation_time_ms": elapsed_ms,
+        }
+
+    except Exception as e:
+        elapsed_ms = int((time.time() - start) * 1000)
+        logger.error(f"OpenRouter API error after {elapsed_ms}ms: {e}", exc_info=True)
         raise
 
 

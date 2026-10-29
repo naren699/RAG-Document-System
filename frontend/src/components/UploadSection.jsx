@@ -1,22 +1,34 @@
 import { useRef, useState } from 'react'
 
-function UploadSection({ onUpload, isUploading, uploadStatus }) {
+const MAX_SIZE = 50 * 1024 * 1024
+
+function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress }) {
   const inputRef = useRef(null)
   const [dragOver, setDragOver] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
+  const [sizeError, setSizeError] = useState(null)
+
+  const validateAndSelect = (file) => {
+    setSizeError(null)
+    if (file.size > MAX_SIZE) {
+      setSizeError(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 50 MB.`)
+      return
+    }
+    setSelectedFile(file)
+  }
 
   const handleDrop = (e) => {
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files[0]
     if (file?.type === 'application/pdf') {
-      setSelectedFile(file)
+      validateAndSelect(file)
     }
   }
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
-    if (file) setSelectedFile(file)
+    if (file) validateAndSelect(file)
   }
 
   const handleUpload = async () => {
@@ -66,6 +78,12 @@ function UploadSection({ onUpload, isUploading, uploadStatus }) {
         )}
       </div>
 
+      {sizeError && (
+        <div className="mt-3 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">
+          {sizeError}
+        </div>
+      )}
+
       {selectedFile && (
         <button
           onClick={handleUpload}
@@ -80,6 +98,21 @@ function UploadSection({ onUpload, isUploading, uploadStatus }) {
           )}
           {isUploading ? 'Processing...' : 'Upload & Process'}
         </button>
+      )}
+
+      {isUploading && uploadProgress != null && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Uploading...</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
       )}
 
       {uploadStatus && (

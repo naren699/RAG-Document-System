@@ -10,7 +10,8 @@ _client = None
 _collection = None
 
 
-def get_collection():
+def get_collection() -> "chromadb.Collection":
+    """Get or create the ChromaDB collection, initializing the client if needed."""
     global _client, _collection
     if _collection is None:
         logger.info(f"Initializing ChromaDB at {CHROMA_DB_PATH}")
@@ -23,7 +24,8 @@ def get_collection():
     return _collection
 
 
-def add_chunks(chunks: list[dict], embeddings: list[list[float]]):
+def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
+    """Store chunks and their embeddings in ChromaDB in batches of 100."""
     collection = get_collection()
 
     ids = [c["chunk_id"] for c in chunks]
@@ -54,7 +56,8 @@ def add_chunks(chunks: list[dict], embeddings: list[list[float]]):
     logger.info(f"Added {len(ids)} chunks to ChromaDB. Total: {collection.count()}")
 
 
-def query_dense(query_embedding: list[float], k: int = 5, doc_id: str = None) -> list[dict]:
+def query_dense(query_embedding: list[float], k: int = 5, doc_id: str | None = None) -> list[dict]:
+    """Find the k nearest chunks to query_embedding by cosine distance."""
     collection = get_collection()
 
     where = {"doc_id": doc_id} if doc_id else None
@@ -79,6 +82,7 @@ def query_dense(query_embedding: list[float], k: int = 5, doc_id: str = None) ->
 
 
 def list_documents() -> list[dict]:
+    """Return a list of {doc_id, chunks_count} for all ingested documents."""
     collection = get_collection()
     all_meta = collection.get(include=["metadatas"])
 
@@ -92,7 +96,8 @@ def list_documents() -> list[dict]:
     return [{"doc_id": did, "chunks_count": count} for did, count in doc_counts.items()]
 
 
-def clear_all():
+def clear_all() -> None:
+    """Delete and recreate the ChromaDB collection."""
     global _collection, _client
     if _client is not None:
         _client.delete_collection("documents")
@@ -102,6 +107,7 @@ def clear_all():
 
 
 def get_stats() -> dict:
+    """Return total_chunks, total_documents, and per-doc breakdown."""
     collection = get_collection()
     count = collection.count()
     docs = list_documents()

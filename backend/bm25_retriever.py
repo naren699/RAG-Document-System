@@ -9,12 +9,14 @@ _chunks = None
 
 
 def _tokenize(text: str) -> list[str]:
+    """Lowercase text and split into word tokens."""
     text = text.lower()
     tokens = re.findall(r'\b\w+\b', text)
     return tokens
 
 
-def build_index(chunks: list[dict]):
+def build_index(chunks: list[dict]) -> None:
+    """Build a BM25 index from chunk texts. Pass empty list to clear."""
     global _index, _chunks
     _chunks = chunks
     if not chunks:
@@ -26,11 +28,13 @@ def build_index(chunks: list[dict]):
     logger.info(f"Built BM25 index with {len(chunks)} chunks")
 
 
-def get_index_and_chunks():
+def get_index_and_chunks() -> tuple:
+    """Return the current (BM25 index, chunks list) or (None, None)."""
     return _index, _chunks
 
 
-def query_bm25(query: str, k: int = 5, doc_id: str = None) -> list[dict]:
+def query_bm25(query: str, k: int = 5, doc_id: str | None = None) -> list[dict]:
+    """Score all chunks against query using BM25 and return top-k."""
     if _index is None or _chunks is None:
         logger.warning("BM25 index not built yet")
         return []
@@ -54,7 +58,13 @@ def query_bm25(query: str, k: int = 5, doc_id: str = None) -> list[dict]:
         })
 
     scored_chunks.sort(key=lambda x: x["score"], reverse=True)
-    return scored_chunks[:k]
+    top = scored_chunks[:k]
+    if top:
+        max_score = top[0]["score"]
+        if max_score > 0:
+            for chunk in top:
+                chunk["score"] = round(chunk["score"] / max_score, 4)
+    return top
 
 
 def rebuild_from_chromadb():

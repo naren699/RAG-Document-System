@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_K = 5
 
 
-def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str = None) -> list[dict]:
+def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str | None = None) -> list[dict]:
     """Hybrid retrieval using Reciprocal Rank Fusion (RRF) of dense + BM25."""
     dense_results = query_dense(embed_query(query), k=k * 2, doc_id=doc_id)
     bm25_results = query_bm25(query, k=k * 2, doc_id=doc_id)
@@ -30,6 +30,10 @@ def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str = None) -> list[
             chunk_data[cid] = chunk
         chunk_data[cid]["bm25_rank"] = rank + 1
 
+    max_rrf = 2 / (rrf_k + 1)
+    for cid in rrf_scores:
+        rrf_scores[cid] = min(rrf_scores[cid] / max_rrf, 1.0)
+
     sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
 
     results = []
@@ -47,9 +51,11 @@ def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str = None) -> list[
     return results
 
 
-def retrieve_dense_only(query: str, k: int = DEFAULT_K, doc_id: str = None) -> list[dict]:
+def retrieve_dense_only(query: str, k: int = DEFAULT_K, doc_id: str | None = None) -> list[dict]:
+    """Retrieve top-k chunks using dense (embedding) similarity only."""
     return query_dense(embed_query(query), k=k, doc_id=doc_id)
 
 
-def retrieve_bm25_only(query: str, k: int = DEFAULT_K, doc_id: str = None) -> list[dict]:
+def retrieve_bm25_only(query: str, k: int = DEFAULT_K, doc_id: str | None = None) -> list[dict]:
+    """Retrieve top-k chunks using BM25 keyword matching only."""
     return query_bm25(query, k=k, doc_id=doc_id)

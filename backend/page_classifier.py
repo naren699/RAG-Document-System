@@ -4,7 +4,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-VISUAL_THRESHOLD = 0.15
+VISUAL_THRESHOLD = 0.50
 
 
 def classify_pages(pdf_path: str) -> list[dict]:
@@ -44,12 +44,9 @@ def classify_pages(pdf_path: str) -> list[dict]:
 
             has_tables = len(tables) > 0
             has_images = len(page.images or []) > 0
-            text_sparse = text_len < 100 and (has_images or has_tables)
-
             is_visual = (
                 visual_ratio > VISUAL_THRESHOLD
-                or text_sparse
-                or (has_tables and visual_ratio > 0.08)
+                or (text_len < 50 and visual_ratio > 0.15)
             )
 
             page_type = "visual" if is_visual else "text"
