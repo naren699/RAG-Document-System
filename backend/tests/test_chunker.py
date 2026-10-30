@@ -1,5 +1,5 @@
 import pytest
-from chunker import chunk_text, count_tokens, chunk_document, _get_overlap, _encoder
+from chunker import chunk_text, count_tokens, chunk_document, _get_overlap, _is_heading, _encoder
 
 
 class TestCountTokens:
@@ -66,6 +66,33 @@ class TestGetOverlap:
         text = "alpha bravo charlie delta echo"
         result = _get_overlap(text, 2)
         assert "echo" in result
+
+
+class TestHeadingDetection:
+    def test_all_caps_heading(self):
+        assert _is_heading("EDUCATION") is True
+        assert _is_heading("WORK EXPERIENCE") is True
+
+    def test_colon_heading(self):
+        assert _is_heading("Skills:") is True
+        assert _is_heading("Professional Experience:") is True
+
+    def test_not_heading(self):
+        assert _is_heading("This is a normal sentence.") is False
+        assert _is_heading("ab") is False
+        assert _is_heading("") is False
+
+    def test_heading_based_splitting(self):
+        text = "EDUCATION\n\nBachelor of Science in CS from MIT.\n\nEXPERIENCE\n\nSoftware Engineer at Google for 5 years."
+        chunks = chunk_text(text, chunk_size=500, chunk_overlap=0)
+        assert len(chunks) == 2
+        assert "EDUCATION" in chunks[0]
+        assert "EXPERIENCE" in chunks[1]
+
+    def test_small_heading_chunk_not_split(self):
+        text = "SKILLS\n\nPython"
+        chunks = chunk_text(text, chunk_size=500, chunk_overlap=0)
+        assert len(chunks) == 1
 
 
 class TestChunkDocument:

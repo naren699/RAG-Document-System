@@ -8,11 +8,11 @@ SAMPLE_CHUNKS = [
 
 
 class TestFormatContext:
-    def test_formats_sources(self):
+    def test_formats_sources_with_numbers(self):
         result = format_context(SAMPLE_CHUNKS)
-        assert "[Source 1: doc1, page 1 | Relevance: 0.85]" in result
+        assert "[1] (Source: doc1, page 1)" in result
         assert "Machine learning is AI." in result
-        assert "[Source 2: doc1, page 2 | Relevance: 0.72]" in result
+        assert "[2] (Source: doc1, page 2)" in result
 
     def test_empty_chunks(self):
         assert format_context([]) == ""
@@ -24,7 +24,7 @@ class TestFormatContext:
     def test_missing_fields_use_defaults(self):
         chunks = [{"text": "Some text"}]
         result = format_context(chunks)
-        assert "Relevance: 0.00" in result
+        assert "[1]" in result
         assert "page ?" in result
 
 

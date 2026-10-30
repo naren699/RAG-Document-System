@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 
 function QuerySection({ query, onQueryChange, onSearch, isSearching, disabled, searchHistory, onSelectHistory }) {
   const [showHistory, setShowHistory] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const wrapperRef = useRef(null)
 
   const handleKeyDown = (e) => {
@@ -17,6 +18,13 @@ function QuerySection({ query, onQueryChange, onSearch, isSearching, disabled, s
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    if (!isSearching) { setElapsed(0); return }
+    const start = Date.now()
+    const interval = setInterval(() => setElapsed(((Date.now() - start) / 1000).toFixed(1)), 100)
+    return () => clearInterval(interval)
+  }, [isSearching])
 
   const history = searchHistory || []
 
@@ -70,6 +78,9 @@ function QuerySection({ query, onQueryChange, onSearch, isSearching, disabled, s
           {isSearching ? 'Searching...' : 'Search'}
         </button>
       </div>
+      {isSearching && elapsed > 0 && (
+        <p className="text-sm text-gray-400 mt-2 text-center">Searching... {elapsed}s</p>
+      )}
     </section>
   )
 }

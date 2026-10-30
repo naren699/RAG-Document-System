@@ -1,0 +1,5 @@
+pdf_file,page_num,expected_type,notes
+test_sample.pdf,1,text,ML intro - text only
+test_sample.pdf,2,text,ML concepts - text only
+test_sample.pdf,3,text,Neural networks - text only
+test_sample.pdf,4,text,Applications - text only

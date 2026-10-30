@@ -58,13 +58,7 @@ def query_bm25(query: str, k: int = 5, doc_id: str | None = None) -> list[dict]:
         })
 
     scored_chunks.sort(key=lambda x: x["score"], reverse=True)
-    top = scored_chunks[:k]
-    if top:
-        max_score = top[0]["score"]
-        if max_score > 0:
-            for chunk in top:
-                chunk["score"] = round(chunk["score"] / max_score, 4)
-    return top
+    return scored_chunks[:k]
 
 
 def rebuild_from_chromadb():

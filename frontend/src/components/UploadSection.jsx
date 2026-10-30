@@ -2,11 +2,12 @@ import { useRef, useState } from 'react'
 
 const MAX_SIZE = 50 * 1024 * 1024
 
-function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress }) {
+function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress, llmProvider }) {
   const inputRef = useRef(null)
   const [dragOver, setDragOver] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [sizeError, setSizeError] = useState(null)
+  const [excludePages, setExcludePages] = useState('')
 
   const validateAndSelect = (file) => {
     setSizeError(null)
@@ -33,8 +34,9 @@ function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress }) 
 
   const handleUpload = async () => {
     if (!selectedFile) return
-    await onUpload(selectedFile)
+    await onUpload(selectedFile, excludePages.trim())
     setSelectedFile(null)
+    setExcludePages('')
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -78,6 +80,12 @@ function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress }) 
         )}
       </div>
 
+      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-3">
+        Privacy notice: Document content will be sent to an external AI provider
+        {llmProvider ? ` (${llmProvider})` : ''} for question answering. Avoid uploading documents
+        containing sensitive personal or confidential information.
+      </p>
+
       {sizeError && (
         <div className="mt-3 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">
           {sizeError}
@@ -85,19 +93,33 @@ function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress }) 
       )}
 
       {selectedFile && (
-        <button
-          onClick={handleUpload}
-          disabled={isUploading}
-          className="mt-4 w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-medium flex items-center justify-center gap-2"
-        >
-          {isUploading && (
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          )}
-          {isUploading ? 'Processing...' : 'Upload & Process'}
-        </button>
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">
+              Exclude pages (optional, comma-separated)
+            </label>
+            <input
+              type="text"
+              value={excludePages}
+              onChange={(e) => setExcludePages(e.target.value)}
+              placeholder="e.g. 3, 4"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={handleUpload}
+            disabled={isUploading}
+            className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-medium flex items-center justify-center gap-2"
+          >
+            {isUploading && (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {isUploading ? 'Processing...' : 'Upload & Process'}
+          </button>
+        </div>
       )}
 
       {isUploading && uploadProgress != null && (
@@ -122,6 +144,13 @@ function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress }) 
             : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
           {uploadStatus.success ? '✓ ' : '✗ '}{uploadStatus.message}
+          {uploadStatus.warnings?.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {uploadStatus.warnings.map((w, i) => (
+                <p key={i} className="text-amber-600 text-xs">Warning: {w}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

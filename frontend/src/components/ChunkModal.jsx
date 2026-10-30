@@ -1,22 +1,5 @@
 import CopyButton from './CopyButton'
-
-function HighlightedText({ text, query }) {
-  if (!query?.trim()) return <span>{text}</span>
-  const words = query.trim().split(/\s+/).filter(w => w.length > 2)
-  if (!words.length) return <span>{text}</span>
-  const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const pattern = new RegExp(`(${escaped.join('|')})`, 'gi')
-  const parts = text.split(pattern)
-  return (
-    <span>
-      {parts.map((part, i) =>
-        pattern.test(part)
-          ? <mark key={i} className="bg-yellow-200 rounded px-0.5">{part}</mark>
-          : <span key={i}>{part}</span>
-      )}
-    </span>
-  )
-}
+import HighlightedText from './HighlightedText'
 
 function ChunkModal({ chunk, query, onClose }) {
   return (
@@ -31,13 +14,13 @@ function ChunkModal({ chunk, query, onClose }) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <span className="inline-block bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded">
-              Page {chunk.page_num}
+              Page {chunk.page_num}{chunk.section_title ? ` · ${chunk.section_title}` : ''}
             </span>
             {chunk.doc_id && (
               <span className="text-sm text-gray-400">{chunk.doc_id}</span>
             )}
-            <span className="text-sm text-gray-400">
-              Score: {(chunk.score * 100).toFixed(1)}%
+            <span className="text-sm text-gray-400" title="Cross-encoder rerank score (raw)">
+              Rerank: {(chunk.rerank_score ?? chunk.score)?.toFixed(3)}
             </span>
           </div>
           <button
@@ -49,6 +32,16 @@ function ChunkModal({ chunk, query, onClose }) {
             </svg>
           </button>
         </div>
+
+        {chunk.image_path && (
+          <div className="mb-3">
+            <img
+              src={`http://localhost:8000/${chunk.image_path}`}
+              alt={`Page ${chunk.page_num}`}
+              className="max-w-full rounded border border-gray-200"
+            />
+          </div>
+        )}
 
         <div className="bg-gray-50 rounded-lg p-4">
           <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">

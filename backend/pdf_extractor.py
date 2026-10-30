@@ -17,7 +17,15 @@ def extract_text_from_pdf(pdf_path: str) -> list[dict]:
         raise ValueError(f"Not a PDF file: {pdf_path}")
 
     pages = []
-    with pdfplumber.open(pdf_path) as pdf:
+    try:
+        pdf_file = pdfplumber.open(pdf_path)
+    except Exception as e:
+        msg = str(e).lower()
+        if "password" in msg or "encrypted" in msg:
+            raise ValueError("This PDF is password-protected. Please remove the password and try again.")
+        raise ValueError(f"Could not read PDF: {e}")
+
+    with pdf_file as pdf:
         total = len(pdf.pages)
         logger.info(f"Extracting text from {path.name} ({total} pages)")
 
