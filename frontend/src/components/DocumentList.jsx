@@ -1,235 +1,237 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { pluralize } from '../utils/pluralize'
+import { FileText, MoreHorizontal, Eye, Scissors, Trash2, Loader2, Filter } from 'lucide-react'
+import Dialog from './Dialog'
+import ChunkDrawer from './ChunkDrawer'
 
-const API = 'http://localhost:8000'
+function ContextMenu({ open, onClose, position, items }) {
+  const ref = useRef(null)
 
-function DocumentList({ documents, onClear, onDelete, onRechunk, selectedDocId, onSelectDoc }) {
-  const [confirming, setConfirming] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
-  const [viewingDoc, setViewingDoc] = useState(null)
-  const [chunks, setChunks] = useState([])
-  const [loadingChunks, setLoadingChunks] = useState(false)
-  const [rechunkingDoc, setRechunkingDoc] = useState(null)
-  const [rechunkSize, setRechunkSize] = useState(300)
-  const [rechunkOverlap, setRechunkOverlap] = useState(50)
-  const [rechunking, setRechunking] = useState(false)
-
-  const totalChunks = documents.reduce((sum, d) => sum + d.chunks_count, 0)
-
-  const handleViewChunks = async (docId) => {
-    if (viewingDoc === docId) {
-      setViewingDoc(null)
-      return
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    const handleKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
     }
-    setViewingDoc(docId)
-    setLoadingChunks(true)
-    try {
-      const res = await fetch(`${API}/api/documents/${encodeURIComponent(docId)}/chunks`)
-      const data = await res.json()
-      setChunks(data.chunks || [])
-    } catch {
-      setChunks([])
-    } finally {
-      setLoadingChunks(false)
-    }
-  }
+  }, [open, onClose])
 
-  const handleRechunk = async (docId) => {
-    setRechunking(true)
-    try {
-      await onRechunk(docId, rechunkSize, rechunkOverlap)
-      setRechunkingDoc(null)
-      if (viewingDoc === docId) handleViewChunks(docId)
-    } finally {
-      setRechunking(false)
-    }
-  }
+  if (!open) return null
 
-  const handleDelete = async (docId) => {
-    if (deletingId === docId) {
-      await onDelete(docId)
-      setDeletingId(null)
-      if (viewingDoc === docId) setViewingDoc(null)
-    } else {
-      setDeletingId(docId)
-    }
+  return (
+    <div
+      ref={ref}
+      className="absolute z-30 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-btn)] shadow-[var(--shadow-popover)] py-1 min-w-[140px]"
+      style={{ top: position.top, right: position.right }}
+    >
+      {items.map((item, i) => (
+        <button
+          key={i}
+          onClick={() => { item.onClick(); onClose() }}
+          className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left transition-theme ${
+            item.danger
+              ? 'text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)]'
+              : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-tertiary)] hover:text-[var(--color-text-primary)]'
+          }`}
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function RechunkPanel({ docId, onRechunk, onClose }) {
+  const [size, setSize] = useState(300)
+  const [overlap, setOverlap] = useState(50)
+  const [loading, setLoading] = useState(false)
+
+  const handleApply = async () => {
+    setLoading(true)
+    await onRechunk(docId, size, overlap)
+    setLoading(false)
+    onClose()
   }
 
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold text-gray-900">
-          Documents ({documents.length})
-        </h2>
-        <div className="flex items-center gap-3">
-          {selectedDocId && (
-            <button
-              onClick={() => onSelectDoc(null)}
-              className="text-xs text-blue-600 hover:text-blue-800"
-            >
-              Clear filter
-            </button>
-          )}
-          {!confirming ? (
-            <button
-              onClick={() => setConfirming(true)}
-              className="text-sm text-red-500 hover:text-red-700 transition-colors"
-            >
-              Clear All
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">Delete all documents?</span>
-              <button
-                onClick={() => { onClear(); setConfirming(false) }}
-                className="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
-              >
-                Yes, delete
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
+    <div className="p-3 border border-[var(--color-border)] rounded-[var(--radius-btn)] bg-[var(--color-surface-secondary)] space-y-3">
+      <p className="text-[12px] font-medium text-[var(--color-text-primary)]">Re-chunk: {docId}</p>
+      <div className="flex items-center gap-3">
+        <label className="text-[12px] text-[var(--color-text-secondary)] flex items-center gap-1">
+          Size
+          <input
+            type="number" min="50" max="1000" value={size}
+            onChange={(e) => setSize(parseInt(e.target.value) || 300)}
+            className="w-16 border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] rounded-[var(--radius-input)] px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+          />
+        </label>
+        <label className="text-[12px] text-[var(--color-text-secondary)] flex items-center gap-1">
+          Overlap
+          <input
+            type="number" min="0" max="200" value={overlap}
+            onChange={(e) => setOverlap(parseInt(e.target.value) || 0)}
+            className="w-16 border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] rounded-[var(--radius-input)] px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+          />
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleApply}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded-[var(--radius-btn)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50 transition-theme"
+        >
+          {loading && <Loader2 size={12} className="animate-spin" />}
+          {loading ? 'Re-indexing...' : 'Re-index'}
+        </button>
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-theme"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DocumentList({ documents, onClear, onDelete, onRechunk, selectedDocId, onSelectDoc }) {
+  const [menuDocId, setMenuDocId] = useState(null)
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 })
+  const [deleteDialog, setDeleteDialog] = useState(null)
+  const [clearDialog, setClearDialog] = useState(false)
+  const [viewingDocId, setViewingDocId] = useState(null)
+  const [rechunkDocId, setRechunkDocId] = useState(null)
+
+  const totalChunks = documents.reduce((sum, d) => sum + d.chunks_count, 0)
+
+  const openMenu = (docId, e) => {
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const parentRect = e.currentTarget.closest('section').getBoundingClientRect()
+    setMenuPos({ top: rect.bottom - parentRect.top + 4, right: 8 })
+    setMenuDocId(menuDocId === docId ? null : docId)
+  }
+
+  const menuItems = (docId) => [
+    { icon: <Eye size={14} />, label: 'View chunks', onClick: () => setViewingDocId(docId) },
+    { icon: <Scissors size={14} />, label: 'Re-chunk', onClick: () => setRechunkDocId(docId) },
+    { icon: <Trash2 size={14} />, label: 'Delete', danger: true, onClick: () => setDeleteDialog(docId) },
+  ]
+
+  return (
+    <section className="relative space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-[14px] font-semibold text-[var(--color-text-primary)]">
+          Documents
+          <span className="text-[var(--color-text-tertiary)] font-normal ml-1">({documents.length})</span>
+        </h3>
+        {documents.length > 1 && (
+          <button
+            onClick={() => setClearDialog(true)}
+            className="text-[12px] text-[var(--color-danger)] hover:underline"
+          >
+            Clear all
+          </button>
+        )}
       </div>
 
-      <div className="space-y-2">
+      {/* Filter control */}
+      <div className="flex items-center gap-2 p-2 rounded-[var(--radius-btn)] bg-[var(--color-surface-tertiary)]">
+        <Filter size={13} className="text-[var(--color-text-tertiary)] shrink-0" />
+        <span className="text-[12px] text-[var(--color-text-tertiary)]">Search in:</span>
+        <select
+          value={selectedDocId || ''}
+          onChange={(e) => onSelectDoc(e.target.value || null)}
+          className="flex-1 text-[12px] bg-transparent text-[var(--color-text-primary)] border-none outline-none cursor-pointer"
+        >
+          <option value="">All documents</option>
+          {documents.map(d => (
+            <option key={d.doc_id} value={d.doc_id}>{d.doc_id}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Document rows */}
+      <div className="space-y-1">
         {documents.map((doc) => (
           <div key={doc.doc_id}>
             <div
-              className={`flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-[var(--radius-btn)] cursor-pointer transition-theme ${
                 selectedDocId === doc.doc_id
-                  ? 'bg-blue-50 border border-blue-200'
-                  : 'bg-gray-50 hover:bg-gray-100'
+                  ? 'bg-[var(--color-accent-subtle)] border border-[var(--color-accent)]/30'
+                  : 'hover:bg-[var(--color-surface-tertiary)]'
               }`}
               onClick={() => onSelectDoc(selectedDocId === doc.doc_id ? null : doc.doc_id)}
             >
-              <div className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  checked={selectedDocId === doc.doc_id}
-                  onChange={() => onSelectDoc(selectedDocId === doc.doc_id ? null : doc.doc_id)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="accent-blue-600"
-                />
-                <svg className="h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M4 18h12a2 2 0 002-2V6l-4-4H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-700">{doc.doc_id}</span>
+              <FileText size={15} className="text-[var(--color-danger)] shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{doc.doc_id}</p>
+                <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                  {pluralize(doc.chunks_count, 'chunk')}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">{pluralize(doc.chunks_count, 'chunk')}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleViewChunks(doc.doc_id) }}
-                  className="text-xs text-blue-500 hover:text-blue-700 transition-colors"
-                  title="View chunks"
-                >
-                  {viewingDoc === doc.doc_id ? 'Hide' : 'View'}
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setRechunkingDoc(rechunkingDoc === doc.doc_id ? null : doc.doc_id) }}
-                  className="text-xs text-purple-500 hover:text-purple-700 transition-colors"
-                  title="Re-chunk with different settings"
-                >
-                  Re-chunk
-                </button>
-                {deletingId === doc.doc_id ? (
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => handleDelete(doc.doc_id)}
-                      className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
-                    >
-                      Confirm
-                    </button>
-                    <button
-                      onClick={() => setDeletingId(null)}
-                      className="text-xs text-gray-400 hover:text-gray-600"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(doc.doc_id) }}
-                    className="text-xs text-red-400 hover:text-red-600 transition-colors"
-                    title="Delete document"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={(e) => openMenu(doc.doc_id, e)}
+                className="p-1.5 rounded-[var(--radius-btn)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-tertiary)] transition-theme"
+                aria-label={`Actions for ${doc.doc_id}`}
+              >
+                <MoreHorizontal size={15} />
+              </button>
             </div>
 
-            {rechunkingDoc === doc.doc_id && (
-              <div className="mt-1 ml-6 border-l-2 border-purple-200 pl-3 py-2 bg-purple-50/30 rounded" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center gap-3 text-xs">
-                  <label className="text-gray-600">
-                    Chunk size:
-                    <input type="number" min="50" max="1000" value={rechunkSize}
-                      onChange={(e) => setRechunkSize(parseInt(e.target.value) || 300)}
-                      className="ml-1 w-16 border border-gray-300 rounded px-1 py-0.5"
-                    />
-                  </label>
-                  <label className="text-gray-600">
-                    Overlap:
-                    <input type="number" min="0" max="200" value={rechunkOverlap}
-                      onChange={(e) => setRechunkOverlap(parseInt(e.target.value) || 0)}
-                      className="ml-1 w-16 border border-gray-300 rounded px-1 py-0.5"
-                    />
-                  </label>
-                  <button
-                    onClick={() => handleRechunk(doc.doc_id)}
-                    disabled={rechunking}
-                    className="bg-purple-600 text-white px-2 py-0.5 rounded hover:bg-purple-700 disabled:bg-purple-300"
-                  >
-                    {rechunking ? 'Re-indexing...' : 'Re-index'}
-                  </button>
-                  <button onClick={() => setRechunkingDoc(null)} className="text-gray-400 hover:text-gray-600">Cancel</button>
-                </div>
-              </div>
-            )}
-
-            {viewingDoc === doc.doc_id && (
-              <div className="mt-1 ml-6 border-l-2 border-gray-200 pl-3 space-y-1 max-h-60 overflow-y-auto">
-                {loadingChunks ? (
-                  <p className="text-xs text-gray-400 py-2">Loading chunks...</p>
-                ) : chunks.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-2">No chunks found.</p>
-                ) : (
-                  chunks.map((chunk) => (
-                    <div key={chunk.chunk_id} className="text-xs p-2 bg-gray-50 rounded">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-gray-600">{chunk.chunk_id}</span>
-                        <span className="text-gray-400">Page {chunk.page_num}</span>
-                        {chunk.section_title && (
-                          <span className="text-purple-600 bg-purple-50 px-1 rounded">{chunk.section_title}</span>
-                        )}
-                        <span className="text-gray-400">{chunk.token_count} tokens</span>
-                      </div>
-                      <p className="text-gray-500 line-clamp-2">{chunk.text}</p>
-                    </div>
-                  ))
-                )}
+            {rechunkDocId === doc.doc_id && (
+              <div className="mt-1 ml-6">
+                <RechunkPanel docId={doc.doc_id} onRechunk={onRechunk} onClose={() => setRechunkDocId(null)} />
               </div>
             )}
           </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between mt-3">
-        <p className="text-xs text-gray-400">
-          {pluralize(totalChunks, 'chunk')} across {pluralize(documents.length, 'document')}
-        </p>
-        {selectedDocId && (
-          <p className="text-xs text-blue-600">
-            Filtering queries to: {selectedDocId}
-          </p>
-        )}
-      </div>
+      {/* Summary */}
+      <p className="text-[11px] text-[var(--color-text-tertiary)]">
+        {pluralize(totalChunks, 'chunk')} across {pluralize(documents.length, 'document')}
+      </p>
+
+      {/* Context menu */}
+      <ContextMenu
+        open={menuDocId !== null}
+        onClose={() => setMenuDocId(null)}
+        position={menuPos}
+        items={menuDocId ? menuItems(menuDocId) : []}
+      />
+
+      {/* Delete confirmation */}
+      <Dialog
+        open={deleteDialog !== null}
+        onClose={() => setDeleteDialog(null)}
+        title="Delete document"
+        description={`This will permanently delete "${deleteDialog}" and all its chunks. This cannot be undone.`}
+        danger
+        confirmLabel="Delete"
+        onConfirm={() => { onDelete(deleteDialog); setDeleteDialog(null) }}
+      />
+
+      {/* Clear all confirmation */}
+      <Dialog
+        open={clearDialog}
+        onClose={() => setClearDialog(false)}
+        title="Clear all documents"
+        description={`This will permanently delete all ${documents.length} document${documents.length !== 1 ? 's' : ''} and ${totalChunks} chunk${totalChunks !== 1 ? 's' : ''}. This cannot be undone.`}
+        danger
+        confirmLabel="Delete all"
+        onConfirm={() => { onClear(); setClearDialog(false) }}
+      />
+
+      {/* Chunk drawer */}
+      {viewingDocId && (
+        <ChunkDrawer docId={viewingDocId} onClose={() => setViewingDocId(null)} />
+      )}
     </section>
   )
 }

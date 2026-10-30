@@ -1,15 +1,38 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { PanelLeft } from 'lucide-react'
 import { pluralize } from './utils/pluralize'
 import Header from './components/Header'
+import Sidebar from './components/Sidebar'
+import QuestionBar from './components/QuestionBar'
 import UploadSection from './components/UploadSection'
-import QuerySection from './components/QuerySection'
 import ResultsSection from './components/ResultsSection'
 import DocumentList from './components/DocumentList'
 import SettingsPanel from './components/SettingsPanel'
+import EvaluateTab from './components/EvaluateTab'
+import Toast from './components/Toast'
 
 const API = 'http://localhost:8000'
 
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('fare-theme') || 'system')
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.remove('light', 'dark')
+    if (theme !== 'system') root.classList.add(theme)
+    localStorage.setItem('fare-theme', theme)
+  }, [theme])
+
+  const toggle = () => setTheme(prev => prev === 'system' ? 'light' : prev === 'light' ? 'dark' : 'system')
+
+  return { theme, toggle }
+}
+
 function App() {
+  const { theme, toggle: toggleTheme } = useTheme()
+  const [activeTab, setActiveTab] = useState('ask')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   const [documents, setDocuments] = useState([])
   const [uploadStatus, setUploadStatus] = useState(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -23,6 +46,7 @@ function App() {
   const [selectedDocId, setSelectedDocId] = useState(null)
   const [conversationHistory, setConversationHistory] = useState([])
   const [pastResults, setPastResults] = useState([])
+  const [toast, setToast] = useState(null)
 
   const [settings, setSettings] = useState({
     topK: 5,
@@ -32,6 +56,7 @@ function App() {
   })
 
   const abortRef = useRef(null)
+  const conversationEndRef = useRef(null)
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -43,9 +68,7 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchDocuments()
-  }, [fetchDocuments])
+  useEffect(() => { fetchDocuments() }, [fetchDocuments])
 
   const handleUpload = async (file, excludePages) => {
     setIsUploading(true)
@@ -61,41 +84,24 @@ function App() {
       const data = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('POST', `${API}/api/ingest`)
-
         xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setUploadProgress(Math.round((e.loaded / e.total) * 100))
-          }
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100))
         }
-
         xhr.onload = () => {
           try {
             const json = JSON.parse(xhr.responseText)
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(json)
-            } else {
-              reject(new Error(json.detail || 'Upload failed'))
-            }
-          } catch {
-            reject(new Error('Invalid response from server'))
-          }
+            if (xhr.status >= 200 && xhr.status < 300) resolve(json)
+            else reject(new Error(json.detail || 'Upload failed'))
+          } catch { reject(new Error('Invalid response from server')) }
         }
-
         xhr.onerror = () => reject(new Error('Cannot reach backend. Is the server running?'))
         xhr.send(formData)
       })
 
-      let message = `Uploaded! ${pluralize(data.chunks_count, 'chunk')} created from ${pluralize(data.total_pages, 'page')}`
-      if (data.excluded_pages?.length) {
-        message += ` (excluded pages: ${data.excluded_pages.join(', ')})`
-      }
-
-      setUploadStatus({
-        success: true,
-        message,
-        warnings: data.warnings || [],
-        data,
-      })
+      const msg = `${pluralize(data.chunks_count, 'chunk')} created from ${pluralize(data.total_pages, 'page')}`
+      setUploadStatus({ success: true, message: msg, warnings: data.warnings || [], data })
+      setToast({ message: msg, type: 'success' })
+      setTimeout(() => setUploadStatus(null), 4000)
       fetchDocuments()
     } catch (err) {
       setUploadStatus({ success: false, message: err.message })
@@ -112,9 +118,7 @@ function App() {
       setResult(null)
       setUploadStatus(null)
       setSelectedDocId(null)
-    } catch {
-      setError('Failed to clear documents')
-    }
+    } catch { setError('Failed to clear documents') }
   }
 
   const handleDeleteDoc = async (docId) => {
@@ -127,9 +131,7 @@ function App() {
       }
       if (selectedDocId === docId) setSelectedDocId(null)
       fetchDocuments()
-    } catch {
-      setError('Failed to delete document')
-    }
+    } catch { setError('Failed to delete document') }
   }
 
   const handleRechunk = async (docId, chunkSize, chunkOverlap) => {
@@ -145,15 +147,21 @@ function App() {
         return
       }
       fetchDocuments()
-    } catch {
-      setError('Failed to re-chunk document')
-    }
+    } catch { setError('Failed to re-chunk document') }
   }
 
-  const handleSearch = async () => {
-    if (!query.trim()) return
+  const handleStop = () => {
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
+    setIsSearching(false)
+    setIsStreaming(false)
+  }
+
+  const handleSearch = async (overrideQuery) => {
+    const q = overrideQuery || query
+    if (!q.trim()) return
+    if (overrideQuery) setQuery(overrideQuery)
     if (result && !result.is_not_found) {
-      setPastResults(prev => [...prev, { query, result }].slice(-5))
+      setPastResults(prev => [...prev, { query: q, result }].slice(-20))
     }
     setIsSearching(true)
     setIsStreaming(true)
@@ -170,7 +178,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query,
+          query: q,
           k: settings.topK,
           method: settings.method,
           doc_id: selectedDocId,
@@ -200,7 +208,6 @@ function App() {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
@@ -211,27 +218,15 @@ function App() {
             eventType = line.slice(7).trim()
           } else if (line.startsWith('data: ') && eventType) {
             const data = JSON.parse(line.slice(6))
-
             if (eventType === 'rewritten_query') {
               rewrittenQuery = data
-              setResult(prev => ({
-                ...(prev || {}),
-                rewritten_query: data,
-              }))
+              setResult(prev => ({ ...(prev || {}), rewritten_query: data }))
             } else if (eventType === 'sources') {
               sources = data
-              setResult(prev => ({
-                ...(prev || {}),
-                sources: data,
-                answer: '',
-                is_not_found: false,
-              }))
+              setResult(prev => ({ ...(prev || {}), sources: data, answer: '', is_not_found: false }))
             } else if (eventType === 'token') {
               answerSoFar += data
-              setResult(prev => ({
-                ...(prev || {}),
-                answer: answerSoFar,
-              }))
+              setResult(prev => ({ ...(prev || {}), answer: answerSoFar }))
             } else if (eventType === 'done') {
               finalResult = data
             } else if (eventType === 'error') {
@@ -243,7 +238,6 @@ function App() {
       }
 
       setIsStreaming(false)
-
       if (finalResult) {
         const answerText = finalResult.answer || answerSoFar
         setResult({
@@ -261,15 +255,15 @@ function App() {
         if (!finalResult.is_not_found) {
           setConversationHistory(prev => [
             ...prev,
-            { role: 'user', content: query },
+            { role: 'user', content: q },
             { role: 'assistant', content: answerText },
           ].slice(-10))
         }
       }
 
       setSearchHistory(prev => {
-        const filtered = prev.filter(q => q !== query.trim())
-        return [query.trim(), ...filtered].slice(0, 10)
+        const filtered = prev.filter(h => h !== q.trim())
+        return [q.trim(), ...filtered].slice(0, 10)
       })
     } catch (err) {
       setIsStreaming(false)
@@ -285,7 +279,7 @@ function App() {
     }
   }
 
-  const handleFeedback = async (rating) => {
+  const handleFeedback = async (rating, reason) => {
     if (!result) return
     try {
       await fetch(`${API}/api/feedback`, {
@@ -295,99 +289,217 @@ function App() {
           query,
           answer: result.answer,
           rating,
+          reason: reason || null,
+          sources: result.sources?.map(s => s.chunk_id) || [],
         }),
       })
-    } catch {
-      // silently ignore feedback errors
-    }
+    } catch { /* silently ignore */ }
   }
 
   const [providerInfo, setProviderInfo] = useState(null)
-
   useEffect(() => {
     fetch(`${API}/api/debug`).then(r => r.json()).then(d => setProviderInfo(d)).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [result, pastResults.length])
+
   const hasDocuments = documents.length > 0
 
+  const sidebarContent = (
+    <>
+      <UploadSection
+        onUpload={handleUpload}
+        isUploading={isUploading}
+        uploadStatus={uploadStatus}
+        uploadProgress={uploadProgress}
+        llmProvider={providerInfo?.llm_provider}
+        compact={hasDocuments}
+      />
+
+      {hasDocuments && (
+        <DocumentList
+          documents={documents}
+          onClear={handleClear}
+          onDelete={handleDeleteDoc}
+          onRechunk={handleRechunk}
+          selectedDocId={selectedDocId}
+          onSelectDoc={setSelectedDocId}
+        />
+      )}
+
+      <SettingsPanel settings={settings} onChange={setSettings} />
+    </>
+  )
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <UploadSection
-          onUpload={handleUpload}
-          isUploading={isUploading}
-          uploadStatus={uploadStatus}
-          uploadProgress={uploadProgress}
-          llmProvider={providerInfo?.llm_provider}
-        />
+    <div className="h-screen flex flex-col overflow-hidden bg-[var(--color-surface-secondary)] transition-theme">
+      <Header
+        providerInfo={providerInfo}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
 
-        {hasDocuments && (
-          <DocumentList
-            documents={documents}
-            onClear={handleClear}
-            onDelete={handleDeleteDoc}
-            onRechunk={handleRechunk}
-            selectedDocId={selectedDocId}
-            onSelectDoc={setSelectedDocId}
-          />
-        )}
+      {activeTab === 'ask' ? (
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
+            {sidebarContent}
+          </Sidebar>
 
-        <SettingsPanel settings={settings} onChange={setSettings} />
-
-        <QuerySection
-          query={query}
-          onQueryChange={setQuery}
-          onSearch={handleSearch}
-          isSearching={isSearching}
-          disabled={!hasDocuments}
-          searchHistory={searchHistory}
-          onSelectHistory={setQuery}
-        />
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-            <div className="flex items-center justify-between">
-              <span>{error}</span>
+          <main className="flex-1 flex flex-col overflow-hidden">
+            {/* Mobile documents button */}
+            <div className="lg:hidden flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] transition-theme">
               <button
-                onClick={() => { setError(null); handleSearch() }}
-                className="text-sm text-red-600 hover:text-red-800 font-medium ml-3"
+                onClick={() => setSidebarOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-[14px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] bg-[var(--color-surface-tertiary)] rounded-[var(--radius-btn)] transition-theme"
+                aria-label="Open documents sidebar"
               >
-                Retry
+                <PanelLeft size={16} />
+                Documents
+                {hasDocuments && (
+                  <span className="text-[12px] text-[var(--color-text-tertiary)]">({documents.length})</span>
+                )}
               </button>
+              {selectedDocId && (
+                <span className="text-[12px] text-[var(--color-accent)] truncate">
+                  Filtering: {selectedDocId}
+                </span>
+              )}
             </div>
-          </div>
-        )}
 
-        {pastResults.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-gray-500">Conversation History</h3>
-              <button
-                onClick={() => { setPastResults([]); setConversationHistory([]) }}
-                className="text-xs text-gray-400 hover:text-gray-600"
-              >
-                Clear history
-              </button>
-            </div>
-            {pastResults.map((past, i) => (
-              <div key={i} className="bg-gray-50 rounded-lg border border-gray-100 p-4 opacity-70">
-                <p className="text-sm font-medium text-gray-600 mb-1">Q: {past.query}</p>
-                <p className="text-sm text-gray-500 line-clamp-3">{past.result.answer}</p>
+            {/* Conversation area */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+                {error && (
+                  <div className="flex items-start gap-3 p-4 rounded-[var(--radius-card)] bg-[var(--color-danger-subtle)] border border-[var(--color-danger)]/20 text-[14px] text-[var(--color-danger)]">
+                    <span className="flex-1">{error}</span>
+                    <button
+                      onClick={() => { setError(null); handleSearch() }}
+                      className="text-[14px] font-medium hover:underline shrink-0"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {/* Empty state: example questions */}
+                {hasDocuments && !result && !isSearching && pastResults.length === 0 && !error && (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-[14px] text-[var(--color-text-tertiary)] mb-4">Try one of these questions</p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {['Summarize this document', 'What are the key points?', 'What is this document about?'].map(eg => (
+                        <button
+                          key={eg}
+                          onClick={() => handleSearch(eg)}
+                          className="px-4 py-2 text-[14px] text-[var(--color-accent)] bg-[var(--color-accent-subtle)] rounded-full hover:bg-[var(--color-accent)]/15 transition-theme"
+                        >
+                          {eg}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No documents empty state */}
+                {!hasDocuments && !error && (
+                  <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <div className="w-12 h-12 rounded-[var(--radius-card)] bg-[var(--color-surface-tertiary)] flex items-center justify-center mb-4">
+                      <svg className="w-6 h-6 text-[var(--color-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    </div>
+                    <p className="text-[16px] font-medium text-[var(--color-text-primary)]">Upload a document to get started</p>
+                    <p className="text-[14px] text-[var(--color-text-tertiary)] mt-1 max-w-xs">
+                      Drop a PDF in the sidebar, then ask questions about it.
+                    </p>
+                  </div>
+                )}
+
+                {/* Past conversation turns */}
+                {pastResults.map((past, i) => (
+                  <div key={i} className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-[12px] font-semibold text-[var(--color-accent)]">Q</span>
+                      </div>
+                      <p className="text-[14px] font-medium text-[var(--color-text-primary)] pt-1">{past.query}</p>
+                    </div>
+                    <div className="ml-10 p-4 rounded-[var(--radius-card)] bg-[var(--color-surface)] border border-[var(--color-border)] transition-theme">
+                      <p className="text-[14px] text-[var(--color-text-secondary)] line-clamp-4">{past.result.answer}</p>
+                      {past.result.sources?.length > 0 && (
+                        <p className="text-[12px] text-[var(--color-text-tertiary)] mt-2">
+                          {pluralize(past.result.sources.length, 'source')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {pastResults.length > 0 && (result || isSearching) && (
+                  <hr className="border-[var(--color-border)]" />
+                )}
+
+                {/* Current question */}
+                {(result || isSearching) && (
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-[12px] font-semibold text-[var(--color-accent)]">Q</span>
+                    </div>
+                    <p className="text-[14px] font-medium text-[var(--color-text-primary)] pt-1">{query}</p>
+                  </div>
+                )}
+
+                {/* Skeleton loading state */}
+                {isSearching && !result && (
+                  <div className="ml-10 p-6 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] space-y-3 animate-pulse">
+                    <div className="h-4 w-24 bg-[var(--color-surface-tertiary)] rounded" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-full bg-[var(--color-surface-tertiary)] rounded" />
+                      <div className="h-4 w-5/6 bg-[var(--color-surface-tertiary)] rounded" />
+                      <div className="h-4 w-3/4 bg-[var(--color-surface-tertiary)] rounded" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Current result (replaces skeleton once answer arrives) */}
+                {result && (
+                  <div className="ml-10">
+                    <ResultsSection
+                      result={result}
+                      query={query}
+                      isStreaming={isStreaming}
+                      onFeedback={handleFeedback}
+                    />
+                  </div>
+                )}
+
+                <div ref={conversationEndRef} />
               </div>
-            ))}
-          </div>
-        )}
+            </div>
 
-        {result && (
-          <ResultsSection
-            result={result}
-            query={query}
-            isStreaming={isStreaming}
-            onFeedback={handleFeedback}
-          />
-        )}
-      </main>
+            {/* Fixed question bar */}
+            <QuestionBar
+              query={query}
+              onQueryChange={setQuery}
+              onSearch={handleSearch}
+              onStop={handleStop}
+              isSearching={isSearching}
+              disabled={!hasDocuments}
+              searchHistory={searchHistory}
+              onSelectHistory={setQuery}
+            />
+          </main>
+        </div>
+      ) : (
+        <EvaluateTab />
+      )}
+
+      <Toast
+        message={toast?.message}
+        type={toast?.type}
+        onClose={() => setToast(null)}
+      />
     </div>
   )
 }

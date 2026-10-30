@@ -30,12 +30,10 @@ function HighlightedText({ text, query }) {
   if (!query?.trim() || !text) return <span>{text}</span>
 
   const words = extractQueryKeywords(query)
-
   if (!words.length) return <span>{text}</span>
 
   const stems = words.map(w => stemBasic(w))
   const allForms = [...new Set([...words, ...stems].filter(w => w.length > 2))]
-
   const escaped = allForms.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const pattern = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi')
   const parts = text.split(pattern)
@@ -44,7 +42,7 @@ function HighlightedText({ text, query }) {
     <span>
       {parts.map((part, i) =>
         i % 2 === 1
-          ? <mark key={i} className="bg-yellow-200 rounded px-0.5">{part}</mark>
+          ? <mark key={i} className="bg-yellow-200 dark:bg-yellow-800/50 dark:text-yellow-200 rounded px-0.5">{part}</mark>
           : <span key={i}>{part}</span>
       )}
     </span>
