@@ -51,7 +51,7 @@ function App() {
   const [settings, setSettings] = useState({
     topK: 5,
     method: 'hybrid',
-    scoreThreshold: -2.0,
+    scoreThreshold: null,
     maskPii: false,
   })
 
@@ -98,7 +98,17 @@ function App() {
         xhr.send(formData)
       })
 
-      const msg = `${pluralize(data.chunks_count, 'chunk')} created from ${pluralize(data.total_pages, 'page')}`
+      let msg = `${pluralize(data.chunks_count, 'chunk')} created from ${pluralize(data.total_pages, 'page')}`
+      if (data.visual_pages > 0) {
+        const methods = []
+        if (data.ocr_pages > 0) methods.push(`${data.ocr_pages} OCR`)
+        if (data.vision_pages > 0) methods.push(`${data.vision_pages} Vision`)
+        if (methods.length > 0) {
+          msg += ` (${data.visual_pages} visual: ${methods.join(', ')})`
+        } else {
+          msg += ` (${data.visual_pages} visual)`
+        }
+      }
       setUploadStatus({ success: true, message: msg, warnings: data.warnings || [], data })
       setToast({ message: msg, type: 'success' })
       setTimeout(() => setUploadStatus(null), 4000)
@@ -185,7 +195,7 @@ function App() {
           score_threshold: settings.scoreThreshold,
           history: conversationHistory.slice(-6),
           mask_pii: settings.maskPii,
-        }),
+        } ),
         signal: controller.signal,
       })
 

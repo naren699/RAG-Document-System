@@ -1,7 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Loader2, FileText, Hash } from 'lucide-react'
+import { X, Loader2, FileText, Hash, Image as ImageIcon, Eye, Type, Scan } from 'lucide-react'
 
 const API = 'http://localhost:8000'
+
+function ExtractionMethodTag({ method, pageType }) {
+  if (pageType === 'text' || !method) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+        <Type size={10} /> Text
+      </span>
+    )
+  }
+  if (method === 'ocr') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">
+        <Scan size={10} /> OCR
+      </span>
+    )
+  }
+  if (method === 'vision') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 px-1.5 py-0.5 rounded">
+        <Eye size={10} /> Vision
+      </span>
+    )
+  }
+  return null
+}
 
 function ChunkDrawer({ docId, onClose }) {
   const overlayRef = useRef(null)
@@ -85,6 +110,7 @@ function ChunkDrawer({ docId, onClose }) {
                 <span className="text-[12px] text-[var(--color-accent)] font-medium">
                   Page {chunk.page_num}
                 </span>
+                <ExtractionMethodTag method={chunk.extraction_method} pageType={chunk.page_type} />
                 {chunk.section_title && (
                   <span className="text-[12px] text-[var(--color-text-secondary)] bg-[var(--color-surface-tertiary)] px-1.5 py-0.5 rounded">
                     {chunk.section_title}
@@ -95,6 +121,31 @@ function ChunkDrawer({ docId, onClose }) {
                   {chunk.token_count} tokens
                 </span>
               </div>
+
+              {/* Confidence indicator for visual pages */}
+              {chunk.confidence != null && chunk.page_type === 'visual' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[var(--color-text-tertiary)]">Confidence:</span>
+                  <div className="flex-1 max-w-[100px] h-1.5 bg-[var(--color-surface-tertiary)] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${chunk.confidence >= 0.7 ? 'bg-[var(--color-success)]' : chunk.confidence >= 0.5 ? 'bg-[var(--color-warning)]' : 'bg-[var(--color-danger)]'}`}
+                      style={{ width: `${Math.round(chunk.confidence * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-[var(--color-text-tertiary)] tabular-nums">{Math.round(chunk.confidence * 100)}%</span>
+                </div>
+              )}
+
+              {/* Page image thumbnail for visual pages */}
+              {chunk.image_path && (
+                <img
+                  src={`${API}/${chunk.image_path}`}
+                  alt={`Page ${chunk.page_num}`}
+                  className="max-w-full max-h-32 rounded-[var(--radius-btn)] border border-[var(--color-border)] cursor-pointer hover:opacity-90"
+                  loading="lazy"
+                  onClick={() => window.open(`${API}/${chunk.image_path}`, '_blank')}
+                />
+              )}
 
               {/* Chunk text */}
               <p className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed whitespace-pre-wrap">

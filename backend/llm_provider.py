@@ -356,6 +356,92 @@ def _ensure_openrouter_client():
     return _openrouter_client
 
 
+VISION_TRANSCRIBE_PROMPT = """You are a document OCR assistant. Extract ALL text content from this page image.
+
+Rules:
+1. Preserve the original structure: headings, paragraphs, lists, table rows.
+2. Use one blank line between sections. Use "# " prefix for section headings.
+3. For tables, output as: "| col1 | col2 | col3 |" format.
+4. For diagrams or charts, describe the data briefly: axes, labels, values, trends.
+5. For infographics, transcribe ALL visible text and describe icons or visual elements in [brackets].
+6. Output ONLY the extracted content. No commentary, preamble, or "Here is the text:".
+7. If text is partially unreadable, write "[unreadable]" for that portion.
+8. If the page is blank, output only: "[Blank page]"
+9. Maintain reading order: left-to-right, top-to-bottom."""
+
+
+def transcribe_page_with_vision(img: "Image.Image", page_num: int) -> dict:
+    """Send a page image to the vision LLM for text transcription.
+
+    Returns {text, input_tokens, output_tokens, generation_time_ms, estimated_cost_usd}.
+    """
+    import base64
+    from io import BytesIO
+
+    provider = get_llm_provider()
+    if provider == "openrouter":
+        client = _ensure_openrouter_client()
+        model = OPENROUTER_MODEL
+    elif provider == "gemini":
+        from google import genai
+        client = _ensure_gemini_client()
+        model = GEMINI_MODEL
+    else:
+        raise ValueError(f"Vision transcription not supported for provider: {provider}")
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b64_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    logger.info(f"Vision transcription page {page_num}: sending to {provider}/{model}")
+    start = time.time()
+
+    if provider == "openrouter":
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=2048,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": VISION_TRANSCRIBE_PROMPT},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:image/png;base64,{b64_image}",
+                    }},
+                ],
+            }],
+        )
+        elapsed_ms = int((time.time() - start) * 1000)
+        text = response.choices[0].message.content
+        input_tokens = getattr(response.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(response.usage, "completion_tokens", 0) or 0
+    elif provider == "gemini":
+        from google import genai
+        import PIL.Image
+        response = client.models.generate_content(
+            model=model,
+            contents=[VISION_TRANSCRIBE_PROMPT, img],
+            config=genai.types.GenerateContentConfig(max_output_tokens=2048),
+        )
+        elapsed_ms = int((time.time() - start) * 1000)
+        text = response.text
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+            output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+
+    logger.info(f"Vision transcription page {page_num}: {len(text)} chars, "
+                f"{input_tokens} in / {output_tokens} out, {elapsed_ms}ms")
+
+    return {
+        "text": text,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "generation_time_ms": elapsed_ms,
+        "estimated_cost_usd": _estimate_cost(model, input_tokens, output_tokens),
+    }
+
+
 def stream_with_gemini(context: str, query: str, history: list[dict] | None = None):
     """Yield text chunks from Gemini streaming API, then a usage sentinel dict."""
     from google import genai

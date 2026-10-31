@@ -105,7 +105,7 @@ async def ingest_pdf(file: UploadFile = File(...), exclude_pages: str = Form("")
         from chunker import chunk_document
         from embedder import embed_texts
         from vector_store import add_chunks
-        from bm25_retriever import build_index, get_index_and_chunks
+        from bm25_retriever import rebuild_from_chromadb
 
         try:
             classification = classify_pages(str(save_path))
@@ -126,12 +126,6 @@ async def ingest_pdf(file: UploadFile = File(...), exclude_pages: str = Form("")
             pages = [p for p in pages if p["page_num"] not in excluded]
 
         warnings = []
-        scanned_pages = [p for p in pages if not p["has_text"]]
-        if scanned_pages:
-            warnings.append(
-                f"{len(scanned_pages)} page(s) appear to be scanned images with no text layer "
-                f"(pages: {', '.join(str(p['page_num']) for p in scanned_pages[:5])})"
-            )
 
         text_page_nums = {p["page_num"] for p in text_pages_info}
         text_pages = [p for p in pages if p["page_num"] in text_page_nums]
@@ -149,6 +143,7 @@ async def ingest_pdf(file: UploadFile = File(...), exclude_pages: str = Form("")
             all_embeddings.extend(text_embeddings)
 
         visual_chunk_count = 0
+        visual_results = None
         if COLPALI_ENABLED and visual_pages_info:
             from colpali_processor import process_visual_pages
             from vector_store import add_visual_chunks
@@ -159,26 +154,36 @@ async def ingest_pdf(file: UploadFile = File(...), exclude_pages: str = Form("")
                 add_visual_chunks(visual_chunks, visual_embeddings)
             visual_chunk_count = len(visual_chunks)
         elif visual_pages_info:
-            visual_page_nums = {p["page_num"] for p in visual_pages_info}
-            visual_text_pages = [p for p in pages if p["page_num"] in visual_page_nums and p["has_text"]]
-            if visual_text_pages:
-                visual_as_text = chunk_document(visual_text_pages, doc_id)
-                for chunk in visual_as_text:
-                    chunk["page_type"] = "visual_fallback"
-                if visual_as_text:
-                    vt_texts = [c["text"] for c in visual_as_text]
-                    vt_embeddings = embed_texts(vt_texts)
-                    all_chunks.extend(visual_as_text)
-                    all_embeddings.extend(vt_embeddings)
+            from image_extractor import extract_visual_pages
+            visual_results = extract_visual_pages(
+                pdf_path=str(save_path),
+                visual_pages=visual_pages_info,
+                doc_id=doc_id,
+            )
+            if visual_results["chunks"]:
+                v_texts = [c["text"] for c in visual_results["chunks"]]
+                v_embeddings = embed_texts(v_texts)
+                all_chunks.extend(visual_results["chunks"])
+                all_embeddings.extend(v_embeddings)
+                visual_chunk_count = len(visual_results["chunks"])
+            if visual_results.get("warnings"):
+                warnings.extend(visual_results["warnings"])
 
         if not all_chunks:
+            if visual_pages_info:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"This PDF has {len(visual_pages_info)} image-based page(s) "
+                        f"but no extractable text. Visual page images were saved. "
+                        f"Install OCR support or enable vision LLM to extract text from images."
+                    ),
+                )
             raise HTTPException(status_code=400, detail="No content could be extracted from the PDF")
 
         add_chunks(all_chunks, all_embeddings)
 
-        _, existing_chunks = get_index_and_chunks()
-        bm25_chunks = (existing_chunks or []) + [c for c in all_chunks if c.get("page_type") != "visual"]
-        build_index(bm25_chunks)
+        rebuild_from_chromadb()
 
         logger.info(
             f"Ingestion complete: {doc_id}, "
@@ -197,6 +202,8 @@ async def ingest_pdf(file: UploadFile = File(...), exclude_pages: str = Form("")
             "excluded_pages": sorted(excluded) if excluded else [],
             "warnings": warnings,
             "classification": classification,
+            "ocr_pages": visual_results["ocr_page_count"] if visual_results else 0,
+            "vision_pages": visual_results["vision_page_count"] if visual_results else 0,
         }
 
     except HTTPException:
@@ -213,7 +220,7 @@ def retrieve_chunks(req: QueryRequest):
     from retriever import retrieve_hybrid, retrieve_dense_only, retrieve_bm25_only
 
     logger.info(f"Retrieve: '{req.query}' | method={req.method} k={req.k}")
-    threshold = req.score_threshold if req.score_threshold is not None else -2.0
+    threshold = req.score_threshold
 
     if req.method == "hybrid":
         chunks, timings = retrieve_hybrid(req.query, k=req.k, doc_id=req.doc_id, score_threshold=threshold)
@@ -228,7 +235,7 @@ def retrieve_chunks(req: QueryRequest):
 
 
 def _do_retrieval(query: str, k: int, method: str, doc_id: str | None,
-                  score_threshold: float = 0.1) -> tuple[list[dict], dict]:
+                  score_threshold: float | None = None) -> tuple[list[dict], dict]:
     """Perform retrieval and return (chunks, detailed_timings)."""
     from retriever import retrieve_hybrid, retrieve_dense_only, retrieve_bm25_only
 
@@ -261,7 +268,7 @@ def query_document(req: QueryRequest):
         raise HTTPException(status_code=400, detail="No documents uploaded. Please ingest a PDF first.")
 
     total_start = time.time()
-    threshold = req.score_threshold if req.score_threshold is not None else -2.0
+    threshold = req.score_threshold
     logger.info(f"Query: '{req.query}' | method={req.method} k={req.k} threshold={threshold}")
 
     chunks, retrieval_timings = _do_retrieval(req.query, req.k, req.method, req.doc_id, threshold)
@@ -334,7 +341,7 @@ async def query_document_stream(req: QueryRequest):
     if stats["total_chunks"] == 0:
         raise HTTPException(status_code=400, detail="No documents uploaded. Please ingest a PDF first.")
 
-    threshold = req.score_threshold if req.score_threshold is not None else -2.0
+    threshold = req.score_threshold
 
     effective_query = req.query
     if req.history and len(req.history) >= 2:
@@ -363,6 +370,8 @@ async def query_document_stream(req: QueryRequest):
                 "page_type": c.get("page_type", "text"),
                 "section_title": c.get("section_title"),
                 "image_path": c.get("image_path"),
+                "extraction_method": c.get("extraction_method"),
+                "confidence": c.get("confidence"),
                 "dense_score": c.get("dense_score"),
                 "bm25_score": c.get("bm25_score"),
                 "rerank_score": c.get("rerank_score"),
@@ -481,7 +490,7 @@ def debug_retrieve(req: QueryRequest):
     """Run all three retrieval methods side-by-side for diagnostic comparison."""
     from retriever import retrieve_hybrid, retrieve_dense_only, retrieve_bm25_only
 
-    threshold = req.score_threshold if req.score_threshold is not None else -2.0
+    threshold = req.score_threshold
     results = {}
     for method, fn in [("dense", retrieve_dense_only), ("bm25", retrieve_bm25_only), ("hybrid", retrieve_hybrid)]:
         start = time.time()
@@ -505,13 +514,17 @@ def get_document_chunks(doc_id: str):
 
     chunks = []
     for i in range(len(data["ids"])):
+        meta = data["metadatas"][i]
         chunks.append({
             "chunk_id": data["ids"][i],
             "text": data["documents"][i],
-            "page_num": data["metadatas"][i]["page_num"],
-            "token_count": data["metadatas"][i]["token_count"],
-            "page_type": data["metadatas"][i].get("page_type", "text"),
-            "section_title": data["metadatas"][i].get("section_title"),
+            "page_num": meta["page_num"],
+            "token_count": meta["token_count"],
+            "page_type": meta.get("page_type", "text"),
+            "section_title": meta.get("section_title"),
+            "extraction_method": meta.get("extraction_method"),
+            "confidence": meta.get("confidence"),
+            "image_path": meta.get("image_path"),
         })
 
     chunks.sort(key=lambda c: (c["page_num"], c["chunk_id"]))

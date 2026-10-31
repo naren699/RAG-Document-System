@@ -13,6 +13,7 @@ anthropic==1.13.0
 google-genai==2.29.0
 httpx==0.28.1
 pymupdf==1.28.2
+easyocr==1.7.2
 colpali-engine==0.3.18
 torch==2.13.0
 torchvision==0.28.0

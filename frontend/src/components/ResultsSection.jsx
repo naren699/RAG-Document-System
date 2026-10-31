@@ -1,7 +1,32 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { CheckCircle2, AlertTriangle, SearchX, ChevronDown, Copy, Check, ThumbsUp, ThumbsDown, Download, Shield, ShieldAlert, ShieldX, Clock, FileText, Eye, Image as ImageIcon, Info } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, SearchX, ChevronDown, Copy, Check, ThumbsUp, ThumbsDown, Download, Shield, ShieldAlert, ShieldX, Clock, FileText, Eye, Image as ImageIcon, Info, Type, Scan } from 'lucide-react'
 import HighlightedText, { extractQueryKeywords } from './HighlightedText'
 import { pluralize } from '../utils/pluralize'
+
+function ExtractionMethodTag({ method, pageType }) {
+  if (pageType === 'text' || (!method && pageType !== 'visual')) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+        <Type size={10} /> Text
+      </span>
+    )
+  }
+  if (method === 'ocr') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded">
+        <Scan size={10} /> OCR
+      </span>
+    )
+  }
+  if (method === 'vision') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 px-1.5 py-0.5 rounded">
+        <Eye size={10} /> Vision
+      </span>
+    )
+  }
+  return null
+}
 
 function parseCitations(text) {
   const cited = new Set()
@@ -267,11 +292,7 @@ function SourceCard({ source, index, query, isCited, isUncited, expanded, onTogg
           <span className="text-[12px] text-[var(--color-accent)] font-medium">
             Page {source.page_num}{source.section_title ? ` · ${source.section_title}` : ''}
           </span>
-          {source.page_type && source.page_type !== 'text' && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 px-1.5 py-0.5 rounded">
-              <ImageIcon size={10} /> Visual
-            </span>
-          )}
+          <ExtractionMethodTag method={source.extraction_method} pageType={source.page_type} />
           {isCited && (
             <span className="text-[11px] font-medium text-[var(--color-success)] bg-[var(--color-success-subtle)] px-1.5 py-0.5 rounded">Cited</span>
           )}

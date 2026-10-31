@@ -44,6 +44,10 @@ def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
             meta["section_title"] = c["section_title"]
         if c.get("image_path"):
             meta["image_path"] = c["image_path"]
+        if c.get("extraction_method"):
+            meta["extraction_method"] = c["extraction_method"]
+        if c.get("confidence") is not None:
+            meta["confidence"] = c["confidence"]
         metadatas.append(meta)
 
     batch_size = 100

@@ -10,7 +10,10 @@ logger = logging.getLogger(__name__)
 
 COLPALI_ENABLED = os.getenv("COLPALI_ENABLED", "false").lower() == "true"
 DEFAULT_K = 5
-DEFAULT_SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "-2.0"))
+DEFAULT_SCORE_THRESHOLD: float | None = None
+_env_threshold = os.getenv("SCORE_THRESHOLD")
+if _env_threshold is not None:
+    DEFAULT_SCORE_THRESHOLD = float(_env_threshold)
 
 
 def _retrieve_visual(query: str, k: int = 2, doc_id: str | None = None) -> list[dict]:
@@ -30,7 +33,7 @@ def _retrieve_visual(query: str, k: int = 2, doc_id: str | None = None) -> list[
 
 
 def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
-                    score_threshold: float = DEFAULT_SCORE_THRESHOLD) -> tuple[list[dict], dict]:
+                    score_threshold: float | None = DEFAULT_SCORE_THRESHOLD) -> tuple[list[dict], dict]:
     """Hybrid retrieval: dense + BM25 via RRF, then cross-encoder reranking.
 
     Returns (chunks, timings_dict).
@@ -102,7 +105,7 @@ def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
 
 
 def retrieve_dense_only(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
-                        score_threshold: float = DEFAULT_SCORE_THRESHOLD) -> tuple[list[dict], dict]:
+                        score_threshold: float | None = DEFAULT_SCORE_THRESHOLD) -> tuple[list[dict], dict]:
     """Retrieve top-k chunks using dense (embedding) similarity only, with reranking."""
     from reranker import rerank
 
@@ -131,7 +134,7 @@ def retrieve_dense_only(query: str, k: int = DEFAULT_K, doc_id: str | None = Non
 
 
 def retrieve_bm25_only(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
-                       score_threshold: float = DEFAULT_SCORE_THRESHOLD) -> tuple[list[dict], dict]:
+                       score_threshold: float | None = DEFAULT_SCORE_THRESHOLD) -> tuple[list[dict], dict]:
     """Retrieve top-k chunks using BM25 keyword matching only, with reranking."""
     from reranker import rerank
 

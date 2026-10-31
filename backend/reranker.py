@@ -24,11 +24,11 @@ def rerank(
     query: str,
     chunks: list[dict],
     top_k: int = 5,
-    score_threshold: float = 0.1,
+    score_threshold: float | None = None,
 ) -> tuple[list[dict], int, int]:
-    """Rerank chunks using a cross-encoder and filter by score threshold.
+    """Rerank chunks using a cross-encoder, optionally filtering by score threshold.
 
-    Returns (filtered_chunks, elapsed_ms, total_candidates).
+    Returns (reranked_chunks, elapsed_ms, total_candidates).
     """
     if not chunks:
         return [], 0, 0
@@ -50,11 +50,15 @@ def rerank(
 
     chunks.sort(key=lambda c: c["rerank_score"], reverse=True)
 
-    filtered = [c for c in chunks if c["rerank_score"] >= score_threshold]
+    if score_threshold is not None:
+        filtered = [c for c in chunks if c["rerank_score"] >= score_threshold]
+    else:
+        filtered = chunks
     result = filtered[:top_k]
 
     logger.info(
         f"Reranked {len(chunks)} chunks in {elapsed_ms}ms: "
-        f"{len(filtered)} above threshold {score_threshold}, returning {len(result)}"
+        f"returning top {len(result)} of {len(chunks)}"
+        + (f" (threshold {score_threshold}, {len(filtered)} passed)" if score_threshold is not None else "")
     )
     return result, elapsed_ms, len(chunks)

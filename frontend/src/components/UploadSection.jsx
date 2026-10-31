@@ -125,17 +125,25 @@ function UploadSection({ onUpload, isUploading, uploadStatus, uploadProgress, ll
       )}
 
       {isUploading && uploadProgress != null && (
-        <div>
+        <div className="space-y-2">
           <div className="flex items-center justify-between text-[12px] text-[var(--color-text-tertiary)] mb-1">
-            <span>Uploading...</span>
-            <span>{uploadProgress}%</span>
+            <span>{uploadProgress < 100 ? 'Uploading...' : 'Processing document...'}</span>
+            <span>{uploadProgress < 100 ? `${uploadProgress}%` : ''}</span>
           </div>
           <div className="h-1.5 bg-[var(--color-surface-tertiary)] rounded-full overflow-hidden">
             <div
-              className="h-full bg-[var(--color-accent)] rounded-full transition-all duration-300"
-              style={{ width: `${uploadProgress}%` }}
+              className={`h-full rounded-full transition-all duration-300 ${uploadProgress >= 100 ? 'bg-[var(--color-accent)] animate-pulse' : 'bg-[var(--color-accent)]'}`}
+              style={{ width: uploadProgress < 100 ? `${uploadProgress}%` : '100%' }}
             />
           </div>
+          {uploadProgress >= 100 && (
+            <div className="text-[11px] text-[var(--color-text-tertiary)] space-y-1">
+              <p className="flex items-center gap-2"><Loader2 size={10} className="animate-spin" /> Classifying pages...</p>
+              <p className="flex items-center gap-2 text-[var(--color-text-quaternary)]">Reading page images (visual pages)</p>
+              <p className="flex items-center gap-2 text-[var(--color-text-quaternary)]">Transcribing content</p>
+              <p className="flex items-center gap-2 text-[var(--color-text-quaternary)]">Creating embeddings</p>
+            </div>
+          )}
         </div>
       )}
 
