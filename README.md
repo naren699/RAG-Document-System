@@ -6,8 +6,9 @@ Key features: hybrid retrieval (dense + BM25 with RRF fusion), cross-encoder rer
 
 ## Team
 
-- **Lakshmidhar**
-- **Dakshina Moorthy**
+- **NARENDHIRAN P**
+- **LAKSHMIDHAR N**
+- **DAKSHINA MOORTHY N D**
 
 ## Architecture
 
