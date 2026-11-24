@@ -11,6 +11,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.8-flash")
+OPENROUTER_REASONING_EFFORT = os.getenv("OPENROUTER_REASONING_EFFORT", "")  # "", "low", "medium", "high"
 
 _gemini_client = None
 _claude_client = None
@@ -38,6 +39,8 @@ COST_PER_1M_TOKENS = {
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "google/gemini-3.8-flash": {"input": 0.10, "output": 0.40},
     "google/gemini-2.5-flash-preview": {"input": 0.15, "output": 0.60},
+    "google/gemini-2.0-flash-001": {"input": 0.10, "output": 0.40},
+    "meta-llama/llama-4-scout": {"input": 0.15, "output": 0.60},
 }
 
 _tokenizer = None
@@ -268,7 +271,7 @@ def query_with_openrouter(context: str, query: str) -> dict:
 
     start = time.time()
     try:
-        response = _openrouter_client.chat.completions.create(
+        create_kwargs = dict(
             model=OPENROUTER_MODEL,
             max_tokens=1024,
             messages=[
@@ -276,14 +279,24 @@ def query_with_openrouter(context: str, query: str) -> dict:
                 {"role": "user", "content": user_message},
             ],
         )
+        if OPENROUTER_REASONING_EFFORT:
+            create_kwargs["extra_body"] = {"reasoning": {"effort": OPENROUTER_REASONING_EFFORT}}
+
+        response = _openrouter_client.chat.completions.create(**create_kwargs)
         elapsed_ms = int((time.time() - start) * 1000)
 
         answer = response.choices[0].message.content
         input_tokens = getattr(response.usage, "prompt_tokens", 0) or 0
         output_tokens = getattr(response.usage, "completion_tokens", 0) or 0
+        details = getattr(response.usage, "completion_tokens_details", None)
+        reasoning_tokens = 0
+        if details:
+            reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0
 
         logger.info(
-            f"OpenRouter response: {input_tokens} in, {output_tokens} out, {elapsed_ms}ms"
+            f"OpenRouter response: {input_tokens} in, {output_tokens} out "
+            f"(reasoning: {reasoning_tokens}), {elapsed_ms}ms | "
+            f"raw_usage: {response.usage}"
         )
 
         return {
@@ -292,6 +305,7 @@ def query_with_openrouter(context: str, query: str) -> dict:
             "model": OPENROUTER_MODEL,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "reasoning_tokens": reasoning_tokens,
             "generation_time_ms": elapsed_ms,
             "estimated_cost_usd": _estimate_cost(OPENROUTER_MODEL, input_tokens, output_tokens),
         }
@@ -316,6 +330,82 @@ def generate_answer(query: str, chunks: list[dict]) -> dict:
 
     context = format_context(chunks)
     return query_llm(context, query)
+
+
+def call_llm_raw(system_prompt: str, user_message: str,
+                  temperature: float = 0, max_tokens: int = 512) -> dict:
+    """Call the current LLM provider with a custom system prompt and user message.
+
+    Returns {"text": str, "model": str, "provider": str,
+             "input_tokens": int, "output_tokens": int}.
+    """
+    provider = get_llm_provider()
+    start = time.time()
+
+    if provider == "openrouter":
+        client = _ensure_openrouter_client()
+        response = client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        text = response.choices[0].message.content
+        input_tokens = getattr(response.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(response.usage, "completion_tokens", 0) or 0
+        model = OPENROUTER_MODEL
+
+    elif provider == "gemini":
+        from google import genai
+        client = _ensure_gemini_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=user_message,
+            config=genai.types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+            ),
+        )
+        text = response.text
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+            output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+        model = GEMINI_MODEL
+
+    elif provider == "claude":
+        import anthropic
+        client = _ensure_claude_client()
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        text = response.content[0].text
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        model = CLAUDE_MODEL
+
+    else:
+        raise ValueError(f"Unknown LLM provider: {provider}")
+
+    elapsed_ms = int((time.time() - start) * 1000)
+    logger.info(f"call_llm_raw ({provider}): {input_tokens} in, {output_tokens} out, {elapsed_ms}ms")
+
+    return {
+        "text": text,
+        "model": model,
+        "provider": provider,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -508,7 +598,7 @@ def stream_with_openrouter(context: str, query: str, history: list[dict] | None 
     client = _ensure_openrouter_client()
     user_message = format_user_message(context, query, history)
 
-    response = client.chat.completions.create(
+    create_kwargs = dict(
         model=OPENROUTER_MODEL,
         max_tokens=1024,
         stream=True,
@@ -518,25 +608,43 @@ def stream_with_openrouter(context: str, query: str, history: list[dict] | None 
             {"role": "user", "content": user_message},
         ],
     )
+    if OPENROUTER_REASONING_EFFORT:
+        create_kwargs["extra_body"] = {"reasoning": {"effort": OPENROUTER_REASONING_EFFORT}}
+
+    response = client.chat.completions.create(**create_kwargs)
     input_tokens = 0
     output_tokens = 0
+    reasoning_tokens = 0
     full_content = []
     for chunk in response:
         if chunk.usage:
             input_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
             output_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
+            details = getattr(chunk.usage, "completion_tokens_details", None)
+            if details:
+                reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0
+            logger.info(f"OpenRouter stream usage: {chunk.usage}")
         if chunk.choices:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 full_content.append(delta.content)
                 yield delta.content
 
+    estimated = False
     if input_tokens == 0:
         input_tokens = _estimate_input_tokens(SYSTEM_PROMPT, user_message)
+        estimated = True
     if output_tokens == 0 and full_content:
         output_tokens = _estimate_output_tokens("".join(full_content))
+        estimated = True
 
-    yield {"__usage__": True, "input_tokens": input_tokens, "output_tokens": output_tokens, "estimated": input_tokens == _estimate_input_tokens(SYSTEM_PROMPT, user_message)}
+    yield {
+        "__usage__": True,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "reasoning_tokens": reasoning_tokens,
+        "estimated": estimated,
+    }
 
 
 def stream_llm(context: str, query: str, history: list[dict] | None = None):
@@ -566,6 +674,7 @@ def get_model_name() -> str:
 
 REWRITE_PROMPT = """Rewrite the follow-up question into a standalone question using the conversation history.
 Only output the rewritten question, nothing else. If it's already standalone, return it unchanged.
+The rewritten question must be a complete, well-formed question. Never output a partial or truncated sentence.
 
 Conversation:
 {history}
@@ -593,23 +702,30 @@ def rewrite_follow_up(query: str, history: list[dict]) -> str:
             from google import genai
             resp = client.models.generate_content(
                 model=GEMINI_MODEL, contents=prompt,
-                config=genai.types.GenerateContentConfig(max_output_tokens=100),
+                config=genai.types.GenerateContentConfig(max_output_tokens=150),
             )
-            return resp.text.strip() or query
+            rewritten = resp.text.strip()
         elif provider == "claude":
             client = _ensure_claude_client()
             resp = client.messages.create(
-                model=CLAUDE_MODEL, max_tokens=100,
+                model=CLAUDE_MODEL, max_tokens=150,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return resp.content[0].text.strip() or query
+            rewritten = resp.content[0].text.strip()
         elif provider == "openrouter":
             client = _ensure_openrouter_client()
             resp = client.chat.completions.create(
-                model=OPENROUTER_MODEL, max_tokens=100,
+                model=OPENROUTER_MODEL, max_tokens=150,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return resp.choices[0].message.content.strip() or query
+            rewritten = resp.choices[0].message.content.strip()
+        else:
+            return query
+
+        if not rewritten or len(rewritten) < 5 or not rewritten[-1] in "?.!":
+            logger.warning(f"Rewrite looks truncated ('{rewritten}'), using original")
+            return query
+        return rewritten
     except Exception as e:
         logger.warning(f"Query rewrite failed, using original: {e}")
     return query

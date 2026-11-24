@@ -38,6 +38,7 @@ function App() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(null)
   const [query, setQuery] = useState('')
+  const [activeQuery, setActiveQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [result, setResult] = useState(null)
@@ -47,12 +48,13 @@ function App() {
   const [conversationHistory, setConversationHistory] = useState([])
   const [pastResults, setPastResults] = useState([])
   const [toast, setToast] = useState(null)
+  const [qualityMetrics, setQualityMetrics] = useState(null)
 
   const [settings, setSettings] = useState({
     topK: 5,
     method: 'hybrid',
     scoreThreshold: null,
-    maskPii: false,
+    maskPii: true,
   })
 
   const abortRef = useRef(null)
@@ -69,6 +71,25 @@ function App() {
   }, [])
 
   useEffect(() => { fetchDocuments() }, [fetchDocuments])
+
+  useEffect(() => {
+    fetch(`${API}/api/eval/runs`).then(r => r.ok ? r.json() : null).then(data => {
+      if (!data?.runs?.length) return
+      const latest = data.runs.find(r => r.status === 'completed')
+      if (!latest) return
+      fetch(`${API}/api/eval/runs/${latest.run_id}/metrics`).then(r => r.ok ? r.json() : null).then(metrics => {
+        if (!metrics?.metrics) return
+        const ar = metrics.metrics.find(m => m.key === 'answer_relevance')
+        const cr = metrics.metrics.find(m => m.key === 'context_relevance')
+        setQualityMetrics({
+          answer_relevance: ar?.measured ?? null,
+          answer_relevance_n: ar?.n ?? null,
+          context_relevance: cr?.measured ?? null,
+          context_relevance_n: cr?.n ?? null,
+        })
+      }).catch(() => {})
+    }).catch(() => {})
+  }, [])
 
   const handleUpload = async (file, excludePages) => {
     setIsUploading(true)
@@ -173,10 +194,12 @@ function App() {
     if (result && !result.is_not_found) {
       setPastResults(prev => [...prev, { query: q, result }].slice(-20))
     }
+    setActiveQuery(q)
     setIsSearching(true)
     setIsStreaming(true)
     setResult(null)
     setError(null)
+    setQuery('')
 
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
@@ -277,6 +300,7 @@ function App() {
       })
     } catch (err) {
       setIsStreaming(false)
+      setQuery(q)
       if (err.name === 'AbortError') {
         setError('Query timed out. The LLM may be overloaded — try again.')
       } else {
@@ -296,7 +320,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query,
+          query: activeQuery,
           answer: result.answer,
           rating,
           reason: reason || null,
@@ -456,7 +480,7 @@ function App() {
                     <div className="w-7 h-7 rounded-full bg-[var(--color-accent-subtle)] flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-[12px] font-semibold text-[var(--color-accent)]">Q</span>
                     </div>
-                    <p className="text-[14px] font-medium text-[var(--color-text-primary)] pt-1">{query}</p>
+                    <p className="text-[14px] font-medium text-[var(--color-text-primary)] pt-1">{activeQuery}</p>
                   </div>
                 )}
 
@@ -477,9 +501,11 @@ function App() {
                   <div className="ml-10">
                     <ResultsSection
                       result={result}
-                      query={query}
+                      query={activeQuery}
                       isStreaming={isStreaming}
                       onFeedback={handleFeedback}
+                      maskPii={settings.maskPii}
+                      qualityMetrics={qualityMetrics}
                     />
                   </div>
                 )}

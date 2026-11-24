@@ -315,6 +315,7 @@ def query_document(req: QueryRequest):
         "tokens_used": {
             "input_tokens": result.get("input_tokens", 0),
             "output_tokens": result.get("output_tokens", 0),
+            "reasoning_tokens": result.get("reasoning_tokens", 0),
         },
         "grounding": grounding,
         "timings": {
@@ -342,14 +343,17 @@ async def query_document_stream(req: QueryRequest):
         raise HTTPException(status_code=400, detail="No documents uploaded. Please ingest a PDF first.")
 
     threshold = req.score_threshold
+    total_start = time.time()
 
+    rewrite_ms = 0
     effective_query = req.query
     if req.history and len(req.history) >= 2:
+        rw_start = time.time()
         effective_query = rewrite_follow_up(req.query, req.history)
-        logger.info(f"Rewritten query: '{req.query}' → '{effective_query}'")
+        rewrite_ms = int((time.time() - rw_start) * 1000)
+        logger.info(f"Rewritten query: '{req.query}' → '{effective_query}' ({rewrite_ms}ms)")
 
     def event_stream():
-        total_start = time.time()
 
         if effective_query != req.query:
             yield f"event: rewritten_query\ndata: {json.dumps(effective_query)}\n\n"
@@ -375,6 +379,7 @@ async def query_document_stream(req: QueryRequest):
                 "dense_score": c.get("dense_score"),
                 "bm25_score": c.get("bm25_score"),
                 "rerank_score": c.get("rerank_score"),
+                "rerank_score_raw": c.get("rerank_score_raw"),
                 "rrf_score": c.get("rrf_score"),
             })
         yield f"event: sources\ndata: {json.dumps(source_data)}\n\n"
@@ -391,7 +396,10 @@ async def query_document_stream(req: QueryRequest):
             yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
             return
 
+        ctx_start = time.time()
         context = format_context(chunks, mask=req.mask_pii)
+        context_build_ms = int((time.time() - ctx_start) * 1000)
+
         provider = get_llm_provider()
         model = get_model_name()
         gen_start = time.time()
@@ -415,26 +423,49 @@ async def query_document_stream(req: QueryRequest):
 
         from grounding import compute_grounding_score
 
-        gen_ms = int((time.time() - gen_start) * 1000)
-        total_ms = int((time.time() - total_start) * 1000)
+        last_token_time = time.time()
+        gen_ms = int((last_token_time - gen_start) * 1000)
+        reasoning_ms = ttft or gen_ms
+        writing_ms = max(0, gen_ms - reasoning_ms)
+
         answer_text = "".join(full_answer)
         in_tokens = usage.get("input_tokens", 0)
         out_tokens = usage.get("output_tokens", 0)
+        reasoning_tokens = usage.get("reasoning_tokens", 0)
         tokens_estimated = usage.get("estimated", False)
 
+        grounding_start = time.time()
         grounding = compute_grounding_score(answer_text, chunks)
+        grounding_ms = int((time.time() - grounding_start) * 1000)
+
+        total_ms = int((time.time() - total_start) * 1000)
+
+        stage_sum = (rewrite_ms
+                     + retrieval_timings.get("retrieval_total_ms", 0)
+                     + context_build_ms + gen_ms + grounding_ms)
+        other_ms = max(0, total_ms - stage_sum)
 
         done_data = {
             "answer": answer_text,
             "is_not_found": False,
             "provider": provider,
             "model": model,
-            "tokens_used": {"input_tokens": in_tokens, "output_tokens": out_tokens, "estimated": tokens_estimated},
+            "tokens_used": {
+                "input_tokens": in_tokens,
+                "output_tokens": out_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                "estimated": tokens_estimated,
+            },
             "grounding": grounding,
             "timings": {
                 **retrieval_timings,
+                "rewrite_ms": rewrite_ms,
+                "context_build_ms": context_build_ms,
+                "reasoning_ms": reasoning_ms,
+                "writing_ms": writing_ms,
                 "generation_ms": gen_ms,
-                "time_to_first_token_ms": ttft,
+                "grounding_ms": grounding_ms,
+                "other_ms": other_ms,
                 "total_ms": total_ms,
             },
             "estimated_cost_usd": _estimate_cost(model, in_tokens, out_tokens),
@@ -734,6 +765,301 @@ def run_quick_eval():
         "avg_latency_ms": avg_latency,
         "max_latency_ms": max_latency,
         "results": results,
+    }
+
+
+@app.post("/api/eval/run")
+def start_eval_run_endpoint(body: dict = {}):
+    """Start a new evaluation run. Returns immediately with run_id; run executes in background."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.runner import start_eval_run
+
+    k = body.get("k", 5)
+    method = body.get("method", "hybrid")
+    score_threshold = body.get("score_threshold")
+
+    meta = start_eval_run(k=k, method=method, score_threshold=score_threshold)
+    return {"run_id": meta.run_id, "status": meta.status, "total_questions": meta.total_questions}
+
+
+@app.get("/api/eval/runs")
+def list_eval_runs():
+    """List all evaluation runs."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.runner import list_runs
+    return {"runs": list_runs()}
+
+
+@app.get("/api/eval/runs/{run_id}")
+def get_eval_run(run_id: str):
+    """Get details of a specific evaluation run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    return run
+
+
+@app.post("/api/eval/runs/{run_id}/faithfulness")
+def run_faithfulness_eval(run_id: str):
+    """Run claim-level faithfulness evaluation for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.llm_judge import evaluate_faithfulness
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed (status: {run.get('status')})")
+
+    result = evaluate_faithfulness(run_id)
+    return result
+
+
+@app.get("/api/eval/runs/{run_id}/claims")
+def get_claims(run_id: str):
+    """Get claim-level faithfulness results for a run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.runner import RUNS_DIR
+
+    claims_path = RUNS_DIR / run_id / "claims.json"
+    if not claims_path.exists():
+        raise HTTPException(status_code=404, detail=f"No faithfulness results for run {run_id}")
+
+    return json.loads(claims_path.read_text(encoding="utf-8"))
+
+
+@app.post("/api/eval/runs/{run_id}/relevance")
+def run_relevance_eval(run_id: str):
+    """Run answer relevance and context relevance evaluation for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.llm_judge import evaluate_relevance
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed (status: {run.get('status')})")
+
+    result = evaluate_relevance(run_id)
+    return result
+
+
+@app.get("/api/eval/runs/{run_id}/relevance")
+def get_relevance(run_id: str):
+    """Get answer and context relevance results for a run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.runner import RUNS_DIR
+
+    relevance_path = RUNS_DIR / run_id / "relevance.json"
+    if not relevance_path.exists():
+        raise HTTPException(status_code=404, detail=f"No relevance results for run {run_id}")
+
+    return json.loads(relevance_path.read_text(encoding="utf-8"))
+
+
+@app.post("/api/eval/runs/{run_id}/retrieval")
+def run_retrieval_eval(run_id: str):
+    """Compute retrieval precision@k and recall@k for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.metrics import compute_retrieval_metrics
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed")
+
+    return compute_retrieval_metrics(run_id)
+
+
+@app.post("/api/eval/runs/{run_id}/accuracy")
+def run_accuracy_eval(run_id: str):
+    """Compute accuracy using human labels for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.metrics import compute_accuracy
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed")
+
+    return compute_accuracy(run_id)
+
+
+@app.post("/api/eval/runs/{run_id}/refusal")
+def run_refusal_eval(run_id: str):
+    """Compute refusal precision, recall, and confusion matrix for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.metrics import compute_refusal_metrics
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed")
+
+    return compute_refusal_metrics(run_id)
+
+
+@app.post("/api/eval/runs/{run_id}/em-f1")
+def run_em_f1_eval(run_id: str):
+    """Compute Exact Match and Token F1 for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.metrics import compute_em_f1
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed")
+
+    return compute_em_f1(run_id)
+
+
+@app.post("/api/eval/runs/{run_id}/agreement")
+def run_agreement_eval(run_id: str):
+    """Compute human-agreement accuracy and Cohen's kappa for a completed run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.metrics import compute_human_agreement
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"Run {run_id} is not completed")
+
+    return compute_human_agreement(run_id)
+
+
+@app.get("/api/eval/runs/{run_id}/metrics")
+def get_all_metrics(run_id: str):
+    """Get all 10 metrics aggregated for a run, with targets and CIs."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.export import aggregate_metrics
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    return aggregate_metrics(run_id)
+
+
+@app.get("/api/eval/runs/{run_id}/export/csv")
+def export_csv_endpoint(run_id: str):
+    """Export all metrics as CSV download."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.export import export_csv
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    csv_content = export_csv(run_id)
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=fare-eval-{run_id}.csv"},
+    )
+
+
+@app.get("/api/eval/runs/{run_id}/export/json")
+def export_json_endpoint(run_id: str):
+    """Export all metrics as JSON download."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.export import export_json
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    return export_json(run_id)
+
+
+@app.get("/api/eval/runs/{run_id}/report")
+def get_eval_report(run_id: str):
+    """Generate the final evaluation report for a run."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.export import generate_report
+    from eval.runner import get_run
+
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    return generate_report(run_id)
+
+
+@app.get("/api/eval/dataset/validate")
+def validate_eval_dataset():
+    """Validate the labeled evaluation dataset."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from eval.runner import validate_dataset
+    return validate_dataset()
+
+
+@app.post("/api/eval/consistency")
+def run_consistency_test(body: dict = {}):
+    """Run the same question N times and report answer consistency."""
+    from llm_provider import generate_answer
+
+    question = body.get("question", "")
+    n = min(body.get("n", 10), 20)
+    if not question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
+
+    answers = []
+    for i in range(n):
+        try:
+            chunks, _ = _do_retrieval(question, k=5, method="hybrid", doc_id=None)
+            if chunks:
+                result = generate_answer(question, chunks)
+                answers.append(result.get("answer", ""))
+            else:
+                answers.append("I couldn't find this in the uploaded documents.")
+        except Exception as e:
+            answers.append(f"Error: {e}")
+
+    unique = list(set(a.strip().lower()[:200] for a in answers))
+    most_common = max(set(answers), key=answers.count)
+
+    return {
+        "question": question,
+        "n": n,
+        "unique_answers": len(unique),
+        "consistency_score": round(answers.count(most_common) / n, 2),
+        "answers": [{"run": i + 1, "answer": a[:300]} for i, a in enumerate(answers)],
+        "most_common_count": answers.count(most_common),
     }
 
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, Settings, RotateCcw } from 'lucide-react'
 
-const DEFAULTS = { topK: 5, method: 'hybrid', scoreThreshold: null, maskPii: false }
+const DEFAULTS = { topK: 5, method: 'hybrid', scoreThreshold: null, maskPii: true }
 
 function SettingsPanel({ settings, onChange }) {
   const [expanded, setExpanded] = useState(false)
@@ -108,7 +108,7 @@ function SettingsPanel({ settings, onChange }) {
               className="accent-[var(--color-accent)]"
             />
             <label htmlFor="mask-pii" className="text-[14px] text-[var(--color-text-secondary)]">
-              Mask personal data before sending to LLM
+              Mask personal data in previews
             </label>
           </div>
 

@@ -1,0 +1,51 @@
+question_id,question,document_id,gold_answer,answerable,gold_chunk_ids,answer_type,category,expected_behavior
+1,What is machine learning?,test_sample.pdf,A subset of AI that enables systems to learn from data,yes,,factual,factual,Should define ML as a subset of AI that learns from data
+2,What is supervised learning?,test_sample.pdf,Supervised learning uses labeled examples to train models,yes,,factual,factual,Should explain supervised learning uses labeled examples
+3,What is unsupervised learning?,test_sample.pdf,Unsupervised learning discovers patterns in data without labeled examples,yes,,factual,factual,Should explain unsupervised learning discovers patterns without labels
+4,When did the field of machine learning grow rapidly?,test_sample.pdf,Since 2010,yes,,factual,factual,Should say since 2010
+5,What are neural networks?,test_sample.pdf,Computing systems inspired by biological neural networks,yes,,factual,factual,Should describe neural networks from the document
+6,What is deep learning?,test_sample.pdf,Deep learning uses multiple layers of neural networks to learn complex patterns,yes,,factual,factual,Should describe deep learning as mentioned in the document
+7,What are convolutional neural networks used for?,test_sample.pdf,Computer vision applications such as image classification,yes,,factual,factual,Should mention computer vision applications
+8,What is NLP?,test_sample.pdf,Natural language processing enables computers to understand and process human language,yes,,factual,factual,Should describe natural language processing
+9,What are key NLP tasks?,test_sample.pdf,Text classification and named entity recognition and sentiment analysis and machine translation,yes,,factual,factual,Should list text classification and named entity recognition and sentiment analysis and machine translation
+10,When did transformers revolutionize NLP?,test_sample.pdf,2017,yes,,factual,factual,Should say 2017
+11,What is computer vision?,test_sample.pdf,Computer vision enables machines to interpret and understand visual information,yes,,factual,factual,Should describe computer vision as interpreting visual information
+12,What are CNNs?,test_sample.pdf,Convolutional neural networks are specialized neural networks for processing grid-like data,yes,,factual,factual,Should describe convolutional neural networks
+13,What are applications of computer vision?,test_sample.pdf,Image classification and object detection and facial recognition,yes,,factual,factual,Should list image classification and object detection and facial recognition
+14,What topics does this document cover?,test_sample.pdf,Machine learning and neural networks and NLP and computer vision,yes,,factual,factual,Should list ML and neural networks and NLP and computer vision
+15,What is discussed on page 1?,test_sample.pdf,Introduction to machine learning,yes,,factual,factual,Should mention introduction to machine learning
+16,What is discussed on page 3?,test_sample.pdf,Natural language processing,yes,,factual,factual,Should mention natural language processing
+17,What is discussed on page 4?,test_sample.pdf,Computer vision,yes,,factual,factual,Should mention computer vision
+18,What is the relationship between AI and machine learning?,test_sample.pdf,ML is a subset of AI,yes,,factual,factual,Should say ML is a subset of AI
+19,What types of learning are described?,test_sample.pdf,Supervised learning and unsupervised learning,yes,,factual,factual,Should mention supervised and unsupervised learning
+20,What is sentiment analysis?,test_sample.pdf,Sentiment analysis is an NLP task,yes,,factual,factual,Should describe it as an NLP task
+21,What is the capital of Mars?,any,,no,,refusal,out_of_scope,Should abstain - not in any document
+22,What did Elon Musk tweet yesterday?,any,,no,,refusal,out_of_scope,Should abstain - not in any document
+23,How do I make a chocolate cake?,any,,no,,refusal,out_of_scope,Should abstain - not in any document
+24,What is the stock price of Apple today?,any,,no,,refusal,out_of_scope,Should abstain - not in any document
+25,Who won the 2030 World Cup?,any,,no,,refusal,out_of_scope,Should abstain - not in any document
+26,What is quantum computing?,any,,no,,refusal,out_of_scope,Should abstain - not related to uploaded docs
+27,Tell me about climate change policies in Antarctica.,any,,no,,refusal,out_of_scope,Should abstain - not in any document
+28,What is the meaning of life?,any,,no,,refusal,out_of_scope,Should abstain - philosophical question
+29,Write me a poem about the ocean.,any,,no,,refusal,out_of_scope,Should abstain - creative request not in docs
+30,What happens in chapter 47 of this document?,any,,no,,refusal,out_of_scope,Should abstain - nonexistent chapter
+31,How do neural networks relate to both NLP and computer vision?,test_sample.pdf,Neural networks are used in NLP for language tasks and in computer vision for image tasks,yes,,multi-part,multi_chunk,Should synthesize info from multiple pages about neural networks in different domains
+32,Compare supervised and unsupervised learning.,test_sample.pdf,Supervised learning uses labeled data while unsupervised learning discovers patterns without labels,yes,,multi-part,multi_chunk,Should pull from the same or nearby chunks to compare both approaches
+33,What evidence supports the growth of machine learning since 2010?,test_sample.pdf,Machine learning has grown rapidly since 2010,yes,,multi-part,multi_chunk,Should gather supporting evidence across chunks
+34,How are transformers and CNNs different in their applications?,test_sample.pdf,Transformers are used in NLP while CNNs are used in computer vision,yes,,multi-part,multi_chunk,Should compare NLP transformers with vision CNNs from different pages
+35,Summarize all the main topics covered in this document.,test_sample.pdf,ML and neural networks and deep learning and NLP and computer vision,yes,,multi-part,multi_chunk,Should synthesize across all pages
+36,The document says machine learning was invented in 2025. Is that correct?,test_sample.pdf,,no,,entity-trap,adversarial,Should not hallucinate - document does not say this
+37,Based on this document what will happen to AI in 2050?,test_sample.pdf,,no,,entity-trap,adversarial,Should refuse to speculate beyond document content
+38,What does the author think about AI taking over the world?,test_sample.pdf,,no,,entity-trap,adversarial,Should abstain unless explicitly discussed
+39,Extrapolate the ML trends to predict which jobs will be replaced.,test_sample.pdf,,no,,entity-trap,adversarial,Should refuse to speculate beyond document content
+40,What are the hidden meanings in this document?,test_sample.pdf,,no,,entity-trap,adversarial,Should not invent hidden meanings
+41,What programming languages are best for machine learning?,test_sample.pdf,Relevant programming languages as discussed in the document,yes,,factual,factual,Should mention relevant languages if discussed in document
+42,What is transfer learning?,test_sample.pdf,Transfer learning as described in the document,yes,,factual,factual,Should describe if mentioned or abstain if not
+43,How many pages does this document have?,test_sample.pdf,4 pages,yes,,factual,factual,Should indicate 4 pages
+44,What was mentioned about recurrent neural networks?,test_sample.pdf,Recurrent neural networks as described in the document,yes,,factual,factual,Should describe RNNs if mentioned or abstain
+45,What is object detection?,test_sample.pdf,Object detection is a computer vision task,yes,,factual,factual,Should describe as a computer vision task
+46,Can you solve this math problem: 2+2?,any,,no,,refusal,out_of_scope,Should abstain - not a document question
+47,What color is the sky?,any,,no,,refusal,out_of_scope,Should abstain - common knowledge not in docs
+48,Tell me a joke about AI.,any,,no,,refusal,out_of_scope,Should abstain - creative request not in docs
+49,What are all the applications mentioned across the entire document?,test_sample.pdf,Applications from NLP and computer vision sections,yes,,multi-part,multi_chunk,Should list applications from NLP and CV sections
+50,How does deep learning differ from traditional machine learning?,test_sample.pdf,Deep learning uses multiple layers of neural networks unlike traditional ML approaches,yes,,multi-part,multi_chunk,Should synthesize across relevant chunks

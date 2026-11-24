@@ -8,11 +8,31 @@ _index = None
 _chunks = None
 
 
+def _stem(word: str) -> str:
+    """Minimal suffix stripping for singular/plural and common verb forms."""
+    if len(word) <= 3:
+        return word
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith("ses") or word.endswith("xes") or word.endswith("zes"):
+        return word[:-2]
+    if word.endswith("ning") or word.endswith("ting") or word.endswith("ring"):
+        if len(word) > 5:
+            return word[:-4] if word[-5] == word[-4] else word[:-3]
+    elif word.endswith("ing") and len(word) > 5:
+        return word[:-3]
+    if word.endswith("ed") and len(word) > 4:
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
 def _tokenize(text: str) -> list[str]:
-    """Lowercase text and split into word tokens."""
+    """Lowercase text, split into word tokens, apply minimal stemming."""
     text = text.lower()
     tokens = re.findall(r'\b\w+\b', text)
-    return tokens
+    return [_stem(t) for t in tokens]
 
 
 def build_index(chunks: list[dict]) -> None:

@@ -54,6 +54,7 @@ def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
     bm25_results = query_bm25(query, k=k * 2, doc_id=doc_id)
     timings["bm25_search_ms"] = int((time.time() - start) * 1000)
 
+    start = time.time()
     rrf_scores = {}
     chunk_data = {}
     rrf_k = 60
@@ -80,11 +81,10 @@ def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
         chunk = chunk_data[cid]
         chunk["rrf_score"] = round(rrf_scores[cid], 6)
         candidates.append(chunk)
+    timings["rrf_fusion_ms"] = int((time.time() - start) * 1000)
 
-    reranked, rerank_ms, candidates_total = rerank(query, candidates, top_k=k, score_threshold=score_threshold)
+    reranked, rerank_ms, rerank_counts, decisions = rerank(query, candidates, top_k=k, score_threshold=score_threshold)
     timings["rerank_ms"] = rerank_ms
-    timings["candidates_total"] = candidates_total
-    timings["candidates_kept"] = len(reranked)
 
     for chunk in reranked:
         chunk["score"] = chunk["rerank_score"]
@@ -95,6 +95,13 @@ def retrieve_hybrid(query: str, k: int = DEFAULT_K, doc_id: str | None = None,
         for vc in visual_results:
             if vc["chunk_id"] not in existing_ids and len(reranked) < k + 2:
                 reranked.append(vc)
+
+    timings["counts"] = {
+        "retrieved": rerank_counts["scored"],
+        "passed_threshold": rerank_counts["passed_threshold"],
+        "sent_to_model": len(reranked),
+    }
+    timings["decisions"] = decisions
 
     logger.info(
         f"Hybrid retrieval for '{query[:50]}...': "
@@ -122,10 +129,10 @@ def retrieve_dense_only(query: str, k: int = DEFAULT_K, doc_id: str | None = Non
     for chunk in results:
         chunk["dense_score"] = chunk.get("score", 0)
 
-    reranked, rerank_ms, candidates_total = rerank(query, results, top_k=k, score_threshold=score_threshold)
+    reranked, rerank_ms, rerank_counts, decisions = rerank(query, results, top_k=k, score_threshold=score_threshold)
     timings["rerank_ms"] = rerank_ms
-    timings["candidates_total"] = candidates_total
-    timings["candidates_kept"] = len(reranked)
+    timings["counts"] = {**rerank_counts, "sent_to_model": len(reranked)}
+    timings["decisions"] = decisions
 
     for chunk in reranked:
         chunk["score"] = chunk["rerank_score"]
@@ -147,10 +154,10 @@ def retrieve_bm25_only(query: str, k: int = DEFAULT_K, doc_id: str | None = None
     for chunk in results:
         chunk["bm25_score_raw"] = chunk.get("score", 0)
 
-    reranked, rerank_ms, candidates_total = rerank(query, results, top_k=k, score_threshold=score_threshold)
+    reranked, rerank_ms, rerank_counts, decisions = rerank(query, results, top_k=k, score_threshold=score_threshold)
     timings["rerank_ms"] = rerank_ms
-    timings["candidates_total"] = candidates_total
-    timings["candidates_kept"] = len(reranked)
+    timings["counts"] = {**rerank_counts, "sent_to_model": len(reranked)}
+    timings["decisions"] = decisions
 
     for chunk in reranked:
         chunk["score"] = chunk["rerank_score"]

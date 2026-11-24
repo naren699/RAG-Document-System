@@ -1,7 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { CheckCircle2, AlertTriangle, SearchX, ChevronDown, Copy, Check, ThumbsUp, ThumbsDown, Download, Shield, ShieldAlert, ShieldX, Clock, FileText, Eye, Image as ImageIcon, Info, Type, Scan } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, SearchX, ChevronDown, Copy, Check, ThumbsUp, ThumbsDown, Download, Shield, ShieldAlert, ShieldX, Clock, FileText, Eye, Image as ImageIcon, Info, Type, Scan, Loader2, PenLine } from 'lucide-react'
 import HighlightedText, { extractQueryKeywords } from './HighlightedText'
 import { pluralize } from '../utils/pluralize'
+
+const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g
+const PHONE_RE = /(?:\+?\d{1,3}[\s\-]?)?\(?\d{2,4}\)?[\s\-]?\d{3,5}[\s\-]?\d{3,5}/g
+
+function maskPiiText(text) {
+  return text.replace(EMAIL_RE, '[EMAIL]').replace(PHONE_RE, '[PHONE]')
+}
 
 function ExtractionMethodTag({ method, pageType }) {
   if (pageType === 'text' || (!method && pageType !== 'visual')) {
@@ -37,19 +44,9 @@ function parseCitations(text) {
 }
 
 function scoreLevel(score) {
-  if (score >= 4) return { label: 'High', cls: 'text-[var(--color-success)] bg-[var(--color-success-subtle)]' }
-  if (score >= 1) return { label: 'Medium', cls: 'text-[var(--color-warning)] bg-[var(--color-warning-subtle)]' }
+  if (score >= 0.7) return { label: 'High', cls: 'text-[var(--color-success)] bg-[var(--color-success-subtle)]' }
+  if (score >= 0.3) return { label: 'Medium', cls: 'text-[var(--color-warning)] bg-[var(--color-warning-subtle)]' }
   return { label: 'Low', cls: 'text-[var(--color-danger)] bg-[var(--color-danger-subtle)]' }
-}
-
-function sigmoidPercent(score) {
-  return Math.max(Math.min(100 / (1 + Math.exp(-score)), 100), 3)
-}
-
-function barColor(score) {
-  if (score >= 4) return 'bg-[var(--color-success)]'
-  if (score >= 1) return 'bg-[var(--color-warning)]'
-  return 'bg-[var(--color-danger)]'
 }
 
 function CopyBtn({ text, className = '' }) {
@@ -192,7 +189,7 @@ function GroundingBadge({ grounding }) {
   )
 }
 
-function StatusBadge({ result }) {
+function StatusBadge({ result, hasInvalidCitations }) {
   if (result.is_not_found) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)] bg-[var(--color-accent-subtle)] px-2 py-0.5 rounded-full">
@@ -200,10 +197,18 @@ function StatusBadge({ result }) {
       </span>
     )
   }
-  if (result.grounding?.score < 0.4) {
+  const score = result.grounding?.score ?? 0
+  if (score < 0.3) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-danger)] bg-[var(--color-danger-subtle)] px-2 py-0.5 rounded-full">
+        <AlertTriangle size={12} /> Not supported
+      </span>
+    )
+  }
+  if (score < 0.7 || hasInvalidCitations) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-warning)] bg-[var(--color-warning-subtle)] px-2 py-0.5 rounded-full">
-        <AlertTriangle size={12} /> Low confidence
+        <AlertTriangle size={12} /> Partially supported
       </span>
     )
   }
@@ -220,7 +225,7 @@ function ScoreBreakdown({ source }) {
     { label: 'Dense', value: source.dense_score, max: 1 },
     { label: 'BM25', value: source.bm25_score, max: 20 },
     { label: 'RRF', value: source.rrf_score, max: 0.033 },
-    { label: 'Rerank', value: source.rerank_score, max: 10 },
+    { label: 'Rerank', value: source.rerank_score, max: 1 },
   ].filter(s => s.value != null)
 
   if (!scores.length) return null
@@ -254,7 +259,7 @@ function ScoreBreakdown({ source }) {
   )
 }
 
-function SourceCard({ source, index, query, isCited, isUncited, expanded, onToggleExpand }) {
+function SourceCard({ source, index, query, isCited, isUncited, expanded, onToggleExpand, maskPii }) {
   const cardRef = useRef(null)
   const [flash, setFlash] = useState(false)
   const sl = scoreLevel(source.rerank_score ?? source.score ?? 0)
@@ -290,18 +295,25 @@ function SourceCard({ source, index, query, isCited, isUncited, expanded, onTogg
             <span className="text-[12px] text-[var(--color-text-secondary)] truncate max-w-[120px]">{source.doc_id}</span>
           )}
           <span className="text-[12px] text-[var(--color-accent)] font-medium">
-            Page {source.page_num}{source.section_title ? ` · ${source.section_title}` : ''}
+            Page {source.page_num}
           </span>
-          <ExtractionMethodTag method={source.extraction_method} pageType={source.page_type} />
-          {isCited && (
-            <span className="text-[11px] font-medium text-[var(--color-success)] bg-[var(--color-success-subtle)] px-1.5 py-0.5 rounded">Cited</span>
+          {source.section_title && (
+            <span className="text-[12px] text-[var(--color-text-secondary)]">
+              {source.section_title}
+            </span>
           )}
+          <ExtractionMethodTag method={source.extraction_method} pageType={source.page_type} />
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <CopyBtn text={source.text} />
-          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${sl.cls}`} title={`Rerank score: ${(source.rerank_score ?? source.score)?.toFixed(3)}`}>
-            {sl.label}
+          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${sl.cls}`} title={`Rerank score: ${(source.rerank_score ?? source.score)?.toFixed(4)} (raw logit: ${source.rerank_score_raw ?? '?'})`}>
+            {sl.label} {((s) => s < 0.1 ? s?.toFixed(3) : s?.toFixed(2))(source.rerank_score ?? source.score)}
           </span>
+          {isCited ? (
+            <span className="text-[11px] font-medium text-[var(--color-success)] bg-[var(--color-success-subtle)] px-2 py-0.5 rounded-full" title={`Answer contains [${index + 1}] citation marker`}>Cited</span>
+          ) : (
+            <span className="text-[11px] font-medium text-[var(--color-text-tertiary)] bg-[var(--color-surface-tertiary)] px-2 py-0.5 rounded-full" title={`Answer does not contain [${index + 1}] — the LLM chose not to cite this source`}>Not cited</span>
+          )}
         </div>
       </div>
 
@@ -310,7 +322,7 @@ function SourceCard({ source, index, query, isCited, isUncited, expanded, onTogg
         {expanded ? (
           <HighlightedText text={source.text} query={query} />
         ) : (
-          <HighlightedText text={getRelevantSnippet(source.text, query)} query={query} />
+          <HighlightedText text={maskPii ? maskPiiText(getRelevantSnippet(source.text, query)) : getRelevantSnippet(source.text, query)} query={query} />
         )}
       </div>
       {source.text.length > 350 && (
@@ -318,7 +330,7 @@ function SourceCard({ source, index, query, isCited, isUncited, expanded, onTogg
           onClick={(e) => { e.stopPropagation(); onToggleExpand() }}
           className="text-[12px] text-[var(--color-accent)] hover:underline mt-1"
         >
-          {expanded ? 'Show less' : 'Show full chunk'}
+          {expanded ? 'Show less' : `Show full chunk${maskPii ? ' (unmasked)' : ''}`}
         </button>
       )}
 
@@ -342,40 +354,79 @@ function SourceCard({ source, index, query, isCited, isUncited, expanded, onTogg
 function DetailsTable({ timings, tokens, cost, sources, citedCount }) {
   if (!timings) return null
   const rows = []
-  if (timings.embed_query_ms != null) rows.push(['Embed', `${timings.embed_query_ms}ms`])
-  if (timings.dense_search_ms != null) rows.push(['Dense search', `${timings.dense_search_ms}ms`])
-  if (timings.bm25_search_ms != null) rows.push(['BM25 search', `${timings.bm25_search_ms}ms`])
-  if (timings.rerank_ms != null) rows.push(['Rerank', `${timings.rerank_ms}ms`])
-  if (timings.retrieval_total_ms != null) rows.push(['Retrieval total', `${timings.retrieval_total_ms}ms`])
-  if (timings.time_to_first_token_ms != null) rows.push(['Time to first token', `${timings.time_to_first_token_ms}ms`])
-  if (timings.generation_ms != null) rows.push(['Generation', `${timings.generation_ms}ms`])
-  if (timings.candidates_total != null) rows.push(['Retrieved / kept', `${timings.candidates_total} / ${timings.candidates_kept ?? '?'}`])
+
+  // Stage timings in pipeline order
+  if (timings.rewrite_ms > 0) rows.push(['Query rewrite', `${timings.rewrite_ms}ms`, 'stage'])
+  if (timings.embed_query_ms != null) rows.push(['Embed query', `${timings.embed_query_ms}ms`, 'stage'])
+  if (timings.dense_search_ms != null) rows.push(['Dense search', `${timings.dense_search_ms}ms`, 'stage'])
+  if (timings.bm25_search_ms != null) rows.push(['BM25 search', `${timings.bm25_search_ms}ms`, 'stage'])
+  if (timings.rrf_fusion_ms != null) rows.push(['RRF fusion', `${timings.rrf_fusion_ms}ms`, 'stage'])
+  if (timings.rerank_ms != null) rows.push(['Rerank', `${timings.rerank_ms}ms`, 'stage'])
+  if (timings.retrieval_total_ms != null) rows.push(['Retrieval total', `${timings.retrieval_total_ms}ms`, 'subtotal'])
+  if (timings.context_build_ms != null) rows.push(['Context build', `${timings.context_build_ms}ms`, 'stage'])
+  if (timings.reasoning_ms != null) rows.push(['Reasoning time', `${timings.reasoning_ms}ms`, 'stage'])
+  if (timings.writing_ms != null) rows.push(['Answer writing', `${timings.writing_ms}ms`, 'stage'])
+  if (timings.generation_ms != null) rows.push(['Generation total', `${timings.generation_ms}ms`, 'subtotal'])
+  if (timings.grounding_ms != null) rows.push(['Grounding check', `${timings.grounding_ms}ms`, 'stage'])
+  if (timings.other_ms > 0) rows.push(['Other', `${timings.other_ms}ms${timings.other_ms > 50 ? ' ⚠' : ''}`, 'stage'])
+  if (timings.total_ms != null) rows.push(['Total', `${timings.total_ms}ms`, 'total'])
+
+  // Counts
+  rows.push(['', '', 'sep'])
+  const counts = timings.counts
+  if (counts) {
+    rows.push(['Chunks', `${counts.retrieved} retrieved → ${counts.passed_threshold} passed threshold → ${counts.sent_to_model} sent to model`])
+  }
   const contextTokens = sources?.reduce((sum, s) => sum + (s.token_count || 0), 0)
-  if (contextTokens > 0) rows.push(['Context', `${contextTokens} tokens, ${pluralize(sources.length, 'chunk')}, ${citedCount} cited`])
+  if (contextTokens > 0) rows.push(['Context', `${contextTokens} tokens, ${citedCount} cited`])
   if (tokens) {
     const est = tokens.estimated ? ' (est.)' : ''
-    rows.push(['Tokens', `${tokens.input_tokens?.toLocaleString()}${est} in / ${tokens.output_tokens?.toLocaleString()} out`])
+    const reasoning = tokens.reasoning_tokens || 0
+    const visible = reasoning > 0 ? tokens.output_tokens - reasoning : tokens.output_tokens
+    rows.push(['Input tokens', `${tokens.input_tokens?.toLocaleString()}${est}`])
+    rows.push(['Output tokens', `${visible?.toLocaleString()} visible` + (reasoning > 0 ? ` + ${reasoning.toLocaleString()} reasoning` : '')])
+    if (reasoning === 0 && tokens.output_tokens > 0) rows.push(['Reasoning', 'not reported by provider'])
   }
-  if (tokens?.reasoning_tokens > 0) rows.push(['Reasoning', `${tokens.reasoning_tokens} tokens`])
   if (cost != null) rows.push(['Cost', `~$${cost < 0.01 ? cost.toFixed(5) : cost.toFixed(3)}`])
 
   return (
     <div className="mt-3 rounded-[var(--radius-btn)] bg-[var(--color-surface-secondary)] border border-[var(--color-border)] overflow-hidden">
       <table className="w-full text-[12px]">
         <tbody>
-          {rows.map(([label, value], i) => (
-            <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--color-surface-tertiary)]/50'}>
-              <td className="px-3 py-1.5 text-[var(--color-text-tertiary)] font-medium whitespace-nowrap">{label}</td>
-              <td className="px-3 py-1.5 text-[var(--color-text-secondary)] text-right tabular-nums">{value}</td>
-            </tr>
-          ))}
+          {rows.map(([label, value, type], i) => {
+            if (type === 'sep') return <tr key={i}><td colSpan={2} className="h-px bg-[var(--color-border)]" /></tr>
+            const isTotal = type === 'total' || type === 'subtotal'
+            return (
+              <tr key={i} className={i % 2 === 0 ? '' : 'bg-[var(--color-surface-tertiary)]/50'}>
+                <td className={`px-3 py-1.5 whitespace-nowrap ${isTotal ? 'text-[var(--color-text-primary)] font-semibold' : 'text-[var(--color-text-tertiary)] font-medium'}`}>{label}</td>
+                <td className={`px-3 py-1.5 text-right tabular-nums ${isTotal ? 'text-[var(--color-text-primary)] font-semibold' : 'text-[var(--color-text-secondary)]'}`}>{value}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
   )
 }
 
-function ResultsSection({ result, query, isStreaming, onFeedback }) {
+function QualityIndicator({ label, value, n }) {
+  const hasValue = value != null
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-btn)] bg-[var(--color-surface-secondary)] border border-[var(--color-border)]">
+      <span className="text-[12px] text-[var(--color-text-tertiary)]">{label}</span>
+      {hasValue ? (
+        <span className="text-[12px] font-medium text-[var(--color-text-primary)] tabular-nums">
+          {(value * 100).toFixed(0)}%
+          {n != null && <span className="text-[var(--color-text-tertiary)] font-normal ml-1">n={n}</span>}
+        </span>
+      ) : (
+        <span className="text-[12px] text-[var(--color-text-tertiary)] italic">Not measured yet</span>
+      )}
+    </div>
+  )
+}
+
+function ResultsSection({ result, query, isStreaming, onFeedback, maskPii, qualityMetrics }) {
   const [showDetails, setShowDetails] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [expandedSources, setExpandedSources] = useState(new Set())
@@ -384,6 +435,11 @@ function ResultsSection({ result, query, isStreaming, onFeedback }) {
 
   const sources = result.sources || []
   const citedIndices = useMemo(() => parseCitations(result.answer || ''), [result.answer])
+  const invalidCitations = useMemo(() => {
+    const invalid = []
+    citedIndices.forEach(n => { if (n < 1 || n > sources.length) invalid.push(n) })
+    return invalid.sort((a, b) => a - b)
+  }, [citedIndices, sources.length])
   const citedSources = sources.filter((_, i) => citedIndices.has(i + 1))
   const uncitedSources = sources.filter((_, i) => !citedIndices.has(i + 1))
 
@@ -465,8 +521,20 @@ function ResultsSection({ result, query, isStreaming, onFeedback }) {
         {/* Header row */}
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <StatusBadge result={result} />
-            <GroundingBadge grounding={result.grounding} />
+            {isStreaming ? (
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-accent)] bg-[var(--color-accent-subtle)] px-2 py-0.5 rounded-full">
+                {!result.answer ? (
+                  <><Loader2 size={12} className="animate-spin" /> Reading sources...</>
+                ) : (
+                  <><PenLine size={12} /> Writing answer...</>
+                )}
+              </span>
+            ) : (
+              <>
+                <StatusBadge result={result} hasInvalidCitations={invalidCitations.length > 0} />
+                <GroundingBadge grounding={result.grounding} />
+              </>
+            )}
           </div>
           {result.provider && result.provider !== 'none' && (
             <span className="text-[11px] text-[var(--color-text-tertiary)]">{result.provider}/{result.model}</span>
@@ -494,6 +562,32 @@ function ResultsSection({ result, query, isStreaming, onFeedback }) {
             <p className="text-[13px] text-[var(--color-warning)]">
               Some claims may not be supported by the retrieved text. Try rephrasing, or raise Top-K in Settings.
             </p>
+          </div>
+        )}
+
+        {/* Invalid citation warning */}
+        {!isStreaming && invalidCitations.length > 0 && (
+          <div className="flex items-start gap-2 mt-3 p-3 rounded-[var(--radius-btn)] bg-[var(--color-danger-subtle)] border border-[var(--color-danger)]/20">
+            <AlertTriangle size={14} className="text-[var(--color-danger)] shrink-0 mt-0.5" />
+            <p className="text-[13px] text-[var(--color-danger)]">
+              Invalid citation{invalidCitations.length > 1 ? 's' : ''}: {invalidCitations.map(n => `[${n}]`).join(', ')} — only {sources.length} source{sources.length !== 1 ? 's' : ''} were sent to the model.
+            </p>
+          </div>
+        )}
+
+        {/* Quality indicators */}
+        {!isStreaming && !result.is_not_found && (
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <QualityIndicator
+              label="Answer Relevance"
+              value={qualityMetrics?.answer_relevance}
+              n={qualityMetrics?.answer_relevance_n}
+            />
+            <QualityIndicator
+              label="Context Relevance"
+              value={qualityMetrics?.context_relevance}
+              n={qualityMetrics?.context_relevance_n}
+            />
           </div>
         )}
 
@@ -654,6 +748,7 @@ function ResultsSection({ result, query, isStreaming, onFeedback }) {
                   next.has(i) ? next.delete(i) : next.add(i)
                   return next
                 })}
+                maskPii={maskPii}
               />
             )
           })}

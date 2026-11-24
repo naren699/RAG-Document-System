@@ -1,0 +1,84 @@
+{
+  "targets_set_on": "2026-11-02",
+  "status": "proposed — pending user approval",
+  "metrics": {
+    "accuracy": {
+      "target": 0.80,
+      "display": ">= 80%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "human_labels"
+    },
+    "faithfulness": {
+      "target": 0.85,
+      "display": ">= 85%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "llm_judge"
+    },
+    "answer_relevance": {
+      "target": 0.85,
+      "display": ">= 85%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "llm_judge"
+    },
+    "context_relevance": {
+      "target": 0.70,
+      "display": ">= 70%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "llm_judge"
+    },
+    "human_agreement_accuracy": {
+      "target": 0.80,
+      "display": ">= 80%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "human_labels"
+    },
+    "retrieval_precision_at_k": {
+      "target": 0.60,
+      "display": ">= 60%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "gold_data"
+    },
+    "retrieval_recall_at_k": {
+      "target": 0.80,
+      "display": ">= 80%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "gold_data"
+    },
+    "refusal_precision": {
+      "target": 0.90,
+      "display": ">= 90%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "gold_data"
+    },
+    "refusal_recall": {
+      "target": 0.90,
+      "display": ">= 90%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "gold_data"
+    },
+    "token_f1": {
+      "target": 0.50,
+      "display": ">= 50%",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "gold_data"
+    },
+    "exact_match": {
+      "target": null,
+      "display": "informational only",
+      "proposed": true,
+      "direction": "higher_is_better",
+      "data_source": "gold_data",
+      "note": "EM is near 0 for long-form answers; tracked for short factual questions only"
+    }
+  }
+}
